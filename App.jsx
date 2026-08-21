@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Landmark, BarChart3, Compass, ScrollText, Target, Plus, X, ChevronDown, ChevronRight, Loader2, Star, Globe2, Download, Link2, Image as ImageIcon, Search, LogOut, Eye } from "lucide-react";
+import { Landmark, BarChart3, Compass, ScrollText, Target, Plus, X, ChevronDown, ChevronRight, Loader2, Star, Globe2, Download, Link2, Image as ImageIcon, Search, LogOut, Eye, AlertTriangle } from "lucide-react";
 import { storageGet, storageSet } from "./storage";
 import { auth } from "./firebase";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
@@ -148,6 +148,7 @@ const DIRECTIONS = [
 ];
 
 const NAV_ITEMS = [
+  { id: "overview", label: "Vue d'ensemble", icon: AlertTriangle },
   { id: "banks", label: "Banques Centrales", icon: Landmark },
   { id: "data", label: "Data Économique", icon: BarChart3 },
   { id: "drivers", label: "Drivers Macro", icon: Compass },
@@ -367,8 +368,14 @@ function RateExpectationsBlock({ bank, onUpdate }) {
         style={{ ...inputStyle, color: C.textPrimary, fontWeight: 500 }}
       />
       <div className="grid grid-cols-2 gap-1.5">
-        <input value={exp.meeting1} onChange={(e) => updateExp({ meeting1: e.target.value })} placeholder="Prochaine réunion (ex. -25 pb)" className="bg-transparent outline-none text-xs" style={inputStyle} />
-        <input value={exp.meeting2} onChange={(e) => updateExp({ meeting2: e.target.value })} placeholder="Réunion suivante" className="bg-transparent outline-none text-xs" style={inputStyle} />
+        <div>
+          <input value={exp.meeting1} onChange={(e) => updateExp({ meeting1: e.target.value })} placeholder="Prochaine réunion (ex. -25 pb)" className="bg-transparent outline-none text-xs w-full" style={inputStyle} />
+          <input type="date" value={exp.nextMeetingDate1 || ""} onChange={(e) => updateExp({ nextMeetingDate1: e.target.value })} title="Date de la prochaine réunion" className="bg-transparent outline-none text-[10px] w-full mt-1" style={{ ...inputStyle, color: C.textFaint }} />
+        </div>
+        <div>
+          <input value={exp.meeting2} onChange={(e) => updateExp({ meeting2: e.target.value })} placeholder="Réunion suivante" className="bg-transparent outline-none text-xs w-full" style={inputStyle} />
+          <input type="date" value={exp.nextMeetingDate2 || ""} onChange={(e) => updateExp({ nextMeetingDate2: e.target.value })} title="Date de la réunion suivante" className="bg-transparent outline-none text-[10px] w-full mt-1" style={{ ...inputStyle, color: C.textFaint }} />
+        </div>
       </div>
       <input value={exp.year2026} onChange={(e) => updateExp({ year2026: e.target.value })} placeholder="Attentes fin 2026 (ex. -75 pb cumulés)" className="bg-transparent outline-none w-full text-xs mt-1.5" style={inputStyle} />
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
@@ -453,6 +460,13 @@ function SurpriseTag({ value, onChange }) {
 
 function IndicatorRow({ indicator, onUpdate, onDelete, refOptions, onNavigateRef }) {
   const content = ensureContent(indicator.content || { text: indicator.note || "" });
+  const snapshot = (text) => {
+    if (!text || !text.trim()) return;
+    const last = indicator.history?.[indicator.history.length - 1]?.text;
+    if (text === last) return;
+    const history = [...(indicator.history || []), { date: new Date().toISOString(), text }].slice(-15);
+    onUpdate({ ...indicator, history });
+  };
   return (
     <div className="rounded-lg p-2.5 mb-1.5" style={{ backgroundColor: C.ink, border: `1px solid ${C.border}` }}>
       <div className="flex items-start justify-between gap-2">
@@ -462,19 +476,20 @@ function IndicatorRow({ indicator, onUpdate, onDelete, refOptions, onNavigateRef
       <div className="flex gap-2 mt-1.5">
         <input value={indicator.value} onChange={(e) => onUpdate({ ...indicator, value: e.target.value })} placeholder="Valeur" className="bg-transparent outline-none text-xs w-20" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textPrimary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 6px" }} />
         <input value={indicator.expected} onChange={(e) => onUpdate({ ...indicator, expected: e.target.value })} placeholder="Attendu" className="bg-transparent outline-none text-xs w-20" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textSecondary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 6px" }} />
-        <input value={indicator.nextRelease} onChange={(e) => onUpdate({ ...indicator, nextRelease: e.target.value })} placeholder="Prochaine publication" className="bg-transparent outline-none text-xs flex-1" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textSecondary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 6px" }} />
+        <input type="date" value={indicator.nextRelease || ""} onChange={(e) => onUpdate({ ...indicator, nextRelease: e.target.value })} title="Prochaine publication" className="bg-transparent outline-none text-xs flex-1" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textSecondary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 6px" }} />
       </div>
       <div className="mt-1.5"><SurpriseTag value={indicator.surprise} onChange={(v) => onUpdate({ ...indicator, surprise: v })} /></div>
       <div className="mt-1.5">
-        <RichContentEditor content={content} onChange={(c) => onUpdate({ ...indicator, content: c, note: undefined })} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Note / interprétation..." rows={1} />
+        <RichContentEditor content={content} onChange={(c) => onUpdate({ ...indicator, content: c, note: undefined })} onSnapshot={snapshot} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Note / interprétation..." rows={1} />
       </div>
+      <HistoryList history={indicator.history} />
     </div>
   );
 }
 
 function CategoryBlock({ category, onUpdate, onDelete, refOptions, onNavigateRef }) {
   const [open, setOpen] = useState(false);
-  const addIndicator = () => { onUpdate({ ...category, indicators: [...category.indicators, { id: uid(), name: "", value: "", expected: "", nextRelease: "", surprise: null, content: emptyContent() }] }); setOpen(true); };
+  const addIndicator = () => { onUpdate({ ...category, indicators: [...category.indicators, { id: uid(), name: "", value: "", expected: "", nextRelease: "", surprise: null, content: emptyContent(), history: [] }] }); setOpen(true); };
   const updateIndicator = (id, updated) => onUpdate({ ...category, indicators: category.indicators.map((i) => (i.id === id ? updated : i)) });
   const deleteIndicator = (id) => onUpdate({ ...category, indicators: category.indicators.filter((i) => i.id !== id) });
   return (
@@ -649,6 +664,13 @@ function AssetChip({ label, active, onClick }) {
 function DriverCard({ driver, onUpdate, onDelete, onSetMain, refOptions, onNavigateRef }) {
   const toggleAsset = (asset) => { const has = driver.assetClasses.includes(asset); onUpdate({ ...driver, assetClasses: has ? driver.assetClasses.filter((a) => a !== asset) : [...driver.assetClasses, asset] }); };
   const content = ensureContent(driver.content || { text: driver.description || "" });
+  const snapshot = (text) => {
+    if (!text || !text.trim()) return;
+    const last = driver.history?.[driver.history.length - 1]?.text;
+    if (text === last) return;
+    const history = [...(driver.history || []), { date: new Date().toISOString(), text }].slice(-15);
+    onUpdate({ ...driver, history });
+  };
   return (
     <div className="rounded-xl p-4" style={{ backgroundColor: C.surface, border: `1px solid ${driver.isMain ? C.gold : C.border}` }}>
       <div className="flex items-start gap-2">
@@ -660,10 +682,11 @@ function DriverCard({ driver, onUpdate, onDelete, onSetMain, refOptions, onNavig
       </div>
       {driver.isMain && <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ml-6 inline-block mt-1" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.gold, border: `1px solid ${C.gold}` }}>Driver principal</span>}
       <div className="mt-2 ml-6" style={{ width: "calc(100% - 1.5rem)" }}>
-        <RichContentEditor content={content} onChange={(c) => onUpdate({ ...driver, content: c, description: undefined })} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Description — pourquoi ce driver compte..." rows={2} />
+        <RichContentEditor content={content} onChange={(c) => onUpdate({ ...driver, content: c, description: undefined })} onSnapshot={snapshot} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Description — pourquoi ce driver compte..." rows={2} />
       </div>
       <div className="flex flex-wrap gap-1.5 mt-2 ml-6">{ASSET_CLASSES.map((a) => <AssetChip key={a} label={a} active={driver.assetClasses.includes(a)} onClick={() => toggleAsset(a)} />)}</div>
       {driver.updatedAt && <UpdatedBadge updatedAt={driver.updatedAt} />}
+      <div className="ml-6"><HistoryList history={driver.history} /></div>
     </div>
   );
 }
@@ -844,7 +867,106 @@ function ExportGroup({ title, items, selected, onToggle, onAll }) {
   );
 }
 
-function ExportModal({ selection, setSelection, banks, economies, drivers, theses, trades, onClose }) {
+// ================= VUE D'ENSEMBLE =================
+function OverviewSection({ banks, economies, theses, globalThesis, onNavigate }) {
+  const now = Date.now();
+  const daysUntil = (dateStr) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr + "T00:00:00");
+    if (isNaN(d.getTime())) return null;
+    return Math.ceil((d.getTime() - now) / 86400000);
+  };
+
+  const tensionBanks = banks.filter((b) => b.bias === "hawkish" && b.marketExpectations?.strength === "forte");
+
+  const upcomingMeetings = banks
+    .flatMap((b) => [
+      { bank: b, date: b.marketExpectations?.nextMeetingDate1 },
+      { bank: b, date: b.marketExpectations?.nextMeetingDate2 },
+    ])
+    .map((m) => ({ ...m, days: daysUntil(m.date) }))
+    .filter((m) => m.days !== null && m.days >= 0)
+    .sort((a, b) => a.days - b.days)
+    .slice(0, 6);
+
+  const upcomingReleases = economies
+    .flatMap((e) => e.categories.flatMap((c) => c.indicators.map((ind) => ({ economy: e, indicator: ind }))))
+    .map((x) => ({ ...x, days: daysUntil(x.indicator.nextRelease) }))
+    .filter((x) => x.days !== null && x.days >= 0)
+    .sort((a, b) => a.days - b.days)
+    .slice(0, 8);
+
+  const staleItems = [];
+  if (globalThesis.updatedAt) {
+    const days = Math.floor((now - new Date(globalThesis.updatedAt).getTime()) / 86400000);
+    if (days > FRESHNESS_DAYS) staleItems.push({ label: "Thèse globale", days });
+  }
+  ASSET_CLASS_DEFS.forEach((cls) => {
+    (theses[cls.id]?.instruments || []).forEach((inst) => {
+      if (inst.updatedAt) {
+        const days = Math.floor((now - new Date(inst.updatedAt).getTime()) / 86400000);
+        if (days > FRESHNESS_DAYS) staleItems.push({ label: `${cls.label} · ${inst.symbol || "sans nom"}`, days });
+      }
+    });
+  });
+  staleItems.sort((a, b) => b.days - a.days);
+
+  const Block = ({ title, children, isEmpty, empty }) => (
+    <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
+      <p className="text-[11px] uppercase tracking-wide mb-2" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{title}</p>
+      {isEmpty ? <p className="text-xs" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>{empty}</p> : children}
+    </div>
+  );
+
+  return (
+    <div>
+      <Block title="Tension banques centrales" isEmpty={tensionBanks.length === 0} empty="Aucune tension détectée pour l'instant.">
+        <div className="flex flex-col gap-1.5">
+          {tensionBanks.map((b) => (
+            <button key={b.id} onClick={() => onNavigate("banks")} className="text-left text-sm px-2.5 py-1.5 rounded-md transition-colors hover:opacity-90" style={{ backgroundColor: C.stale, color: "#fff", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+              ⚠ {b.code} — hawkish, le marché price des attentes fortes
+            </button>
+          ))}
+        </div>
+      </Block>
+
+      <Block title="Réunions de banques centrales à venir" isEmpty={upcomingMeetings.length === 0} empty="Aucune date de réunion renseignée.">
+        <div className="flex flex-col gap-1.5">
+          {upcomingMeetings.map((m, i) => (
+            <button key={i} onClick={() => onNavigate("banks")} className="flex items-center justify-between text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
+              <span>{m.bank.code}</span>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint }}>{m.days === 0 ? "aujourd'hui" : `dans ${m.days} j`}</span>
+            </button>
+          ))}
+        </div>
+      </Block>
+
+      <Block title="Publications économiques à venir" isEmpty={upcomingReleases.length === 0} empty="Aucune date de publication renseignée.">
+        <div className="flex flex-col gap-1.5">
+          {upcomingReleases.map((r, i) => (
+            <button key={i} onClick={() => onNavigate("data")} className="flex items-center justify-between text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
+              <span>{r.economy.code} · {r.indicator.name || "Indicateur"}</span>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint }}>{r.days === 0 ? "aujourd'hui" : `dans ${r.days} j`}</span>
+            </button>
+          ))}
+        </div>
+      </Block>
+
+      <Block title={`Thèses pas mises à jour depuis ${FRESHNESS_DAYS}+ j`} isEmpty={staleItems.length === 0} empty="Tout est à jour.">
+        <div className="flex flex-col gap-1.5">
+          {staleItems.map((s, i) => (
+            <button key={i} onClick={() => onNavigate("thesis")} className="flex items-center justify-between text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.stale}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.stale }}>
+              <span>{s.label}</span>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{s.days} j</span>
+            </button>
+          ))}
+        </div>
+      </Block>
+    </div>
+  );
+}
+
+function ExportModal({ selection, setSelection, banks, economies, drivers, theses, trades, autoBackups, onRestoreAutoBackup, onClose }) {
   const toggle = (group, id) => setSelection((prev) => ({ ...prev, [group]: { ...prev[group], [id]: !prev[group][id] } }));
   const toggleGlobal = () => setSelection((prev) => ({ ...prev, global: !prev.global }));
   const selectAll = (group, ids, value) => setSelection((prev) => ({ ...prev, [group]: Object.fromEntries(ids.map((id) => [id, value])) }));
@@ -871,6 +993,20 @@ function ExportModal({ selection, setSelection, banks, economies, drivers, these
         <button onClick={() => { onClose(); setTimeout(() => window.print(), 200); }} className="w-full mt-3 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: C.gold, color: C.ink, fontFamily: "'IBM Plex Sans', sans-serif" }}>
           Générer l'aperçu d'impression
         </button>
+
+        {autoBackups && autoBackups.length > 0 && (
+          <div className="mt-4 pt-3" style={{ borderTop: `1px solid ${C.border}` }}>
+            <p className="text-[11px] uppercase tracking-wide mb-2" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>Sauvegardes automatiques</p>
+            <div className="flex flex-col gap-1.5">
+              {[...autoBackups].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).map((ab) => (
+                <div key={ab.slot} className="flex items-center justify-between text-xs px-2.5 py-1.5 rounded-md" style={{ border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
+                  <span>{formatDate(ab.timestamp)} · {new Date(ab.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
+                  <button onClick={() => onRestoreAutoBackup(ab.slot)} className="px-2 py-0.5 rounded" style={{ color: C.gold, border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>Restaurer</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -965,7 +1101,7 @@ function PrintView({ selection, banks, economies, drivers, globalThesis, theses,
 
 // ---------- Main App ----------
 function Dashboard({ userEmail, onLogout }) {
-  const [activeTab, setActiveTab] = useState("banks");
+  const [activeTab, setActiveTab] = useState("overview");
   const [banks, setBanks] = useState(SEED_BANKS);
   const [economies, setEconomies] = useState(SEED_ECONOMIES);
   const [drivers, setDrivers] = useState([]);
@@ -973,6 +1109,7 @@ function Dashboard({ userEmail, onLogout }) {
   const [theses, setTheses] = useState(seedTheses());
   const [trades, setTrades] = useState([]);
   const [watchlists, setWatchlists] = useState([]);
+  const [autoBackups, setAutoBackups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState("idle");
   const [showExport, setShowExport] = useState(false);
@@ -984,7 +1121,7 @@ function Dashboard({ userEmail, onLogout }) {
   useEffect(() => {
     (async () => {
       try {
-        const [b, e, d, gt, th, tr, wl] = await Promise.allSettled([
+        const [b, e, d, gt, th, tr, wl, ab] = await Promise.allSettled([
           storageGet("banks-data"),
           storageGet("econ-data"),
           storageGet("drivers-data"),
@@ -992,6 +1129,7 @@ function Dashboard({ userEmail, onLogout }) {
           storageGet("theses-data-v2"),
           storageGet("trades-data-v2"),
           storageGet("watchlists-data-v1"),
+          storageGet("autobackup-index"),
         ]);
         if (b.status === "fulfilled" && b.value?.value) setBanks(JSON.parse(b.value.value));
         if (e.status === "fulfilled" && e.value?.value) {
@@ -1013,6 +1151,7 @@ function Dashboard({ userEmail, onLogout }) {
           setTrades(parsed.map((t) => ({ ...t, reasons: ensureContent(t.reasons) })));
         }
         if (wl.status === "fulfilled" && wl.value?.value) setWatchlists(JSON.parse(wl.value.value));
+        if (ab.status === "fulfilled" && ab.value?.value) setAutoBackups(JSON.parse(ab.value.value));
       } catch (err) {
         // ignore — keep defaults
       } finally {
@@ -1034,6 +1173,52 @@ function Dashboard({ userEmail, onLogout }) {
       }
     }, 400);
   }, []);
+
+  // ---- Sauvegarde automatique périodique (indépendante de persist, silencieuse) ----
+  const stateRef = useRef();
+  stateRef.current = { banks, economies, drivers, globalThesis, theses, trades, watchlists };
+  const autoBackupsRef = useRef(autoBackups);
+  useEffect(() => { autoBackupsRef.current = autoBackups; }, [autoBackups]);
+
+  useEffect(() => {
+    const AUTO_BACKUP_SLOTS = 5;
+    const runBackup = async () => {
+      const payload = { ...stateRef.current, exportedAt: new Date().toISOString() };
+      const prev = autoBackupsRef.current;
+      const nextSlot = prev.length > 0 ? (Math.max(...prev.map((x) => x.slot)) + 1) % AUTO_BACKUP_SLOTS : 0;
+      const nextIndex = [...prev.filter((x) => x.slot !== nextSlot), { slot: nextSlot, timestamp: payload.exportedAt }].sort((a, b) => a.slot - b.slot);
+      try {
+        await storageSet(`autobackup-slot-${nextSlot}`, JSON.stringify(payload));
+        await storageSet("autobackup-index", JSON.stringify(nextIndex));
+        autoBackupsRef.current = nextIndex;
+        setAutoBackups(nextIndex);
+      } catch (err) {
+        // silencieux — on retentera au prochain cycle
+      }
+    };
+    const interval = setInterval(runBackup, 5 * 60 * 1000); // toutes les 5 minutes
+    const initial = setTimeout(runBackup, 60 * 1000); // une première sauvegarde peu après l'ouverture
+    return () => { clearInterval(interval); clearTimeout(initial); };
+  }, []);
+
+  const restoreAutoBackup = async (slot) => {
+    if (!window.confirm("Restaurer cette sauvegarde automatique ? Ça va remplacer les données actuelles par celles de ce moment-là.")) return;
+    try {
+      const res = await storageGet(`autobackup-slot-${slot}`);
+      if (!res?.value) { window.alert("Sauvegarde introuvable."); return; }
+      const data = JSON.parse(res.value);
+      if (data.banks) { setBanks(data.banks); persist("banks-data", data.banks); }
+      if (data.economies) { setEconomies(data.economies); persist("econ-data", data.economies); }
+      if (data.drivers) { setDrivers(data.drivers); persist("drivers-data", data.drivers); }
+      if (data.globalThesis) { setGlobalThesis(data.globalThesis); persist("global-thesis-data-v2", data.globalThesis); }
+      if (data.theses) { setTheses(data.theses); persist("theses-data-v2", data.theses); }
+      if (data.trades) { setTrades(data.trades); persist("trades-data-v2", data.trades); }
+      if (data.watchlists) { setWatchlists(data.watchlists); persist("watchlists-data-v1", data.watchlists); }
+      window.alert("Sauvegarde restaurée.");
+    } catch (err) {
+      window.alert("Impossible de restaurer cette sauvegarde.");
+    }
+  };
 
   const updateBank = (updatedBank) => { const next = banks.map((b) => (b.id === updatedBank.id ? updatedBank : b)); setBanks(next); persist("banks-data", next); };
   const updateEconomy = (updatedEconomy) => { const next = economies.map((e) => (e.id === updatedEconomy.id ? updatedEconomy : e)); setEconomies(next); persist("econ-data", next); };
@@ -1063,7 +1248,7 @@ function Dashboard({ userEmail, onLogout }) {
     setWatchlists(next); persist("watchlists-data-v1", next);
   };
 
-  const addDriver = () => { const next = [...drivers, { id: uid(), name: "", content: emptyContent(), isMain: false, assetClasses: [], updatedAt: new Date().toISOString() }]; setDrivers(next); persist("drivers-data", next); };
+  const addDriver = () => { const next = [...drivers, { id: uid(), name: "", content: emptyContent(), history: [], isMain: false, assetClasses: [], updatedAt: new Date().toISOString() }]; setDrivers(next); persist("drivers-data", next); };
   const updateDriver = (id, updated) => { const next = drivers.map((d) => (d.id === id ? { ...updated, updatedAt: new Date().toISOString() } : d)); setDrivers(next); persist("drivers-data", next); };
   const deleteDriver = (id) => { const next = drivers.filter((d) => d.id !== id); setDrivers(next); persist("drivers-data", next); };
   const setMainDriver = (id) => { const next = drivers.map((d) => ({ ...d, isMain: d.id === id ? !d.isMain : false })); setDrivers(next); persist("drivers-data", next); };
@@ -1151,6 +1336,7 @@ function Dashboard({ userEmail, onLogout }) {
     return results.slice(0, 12);
   })();
   const subtitles = {
+    overview: "Ce qui mérite ton attention, agrégé automatiquement depuis tout le desk.",
     banks: "Ton verdict par banque, et le vote de chaque membre selon tes recherches.",
     data: "Les données par économie, catégorie par catégorie, avec surprises et notes.",
     drivers: "Les forces qui font bouger le marché en ce moment — et laquelle domine.",
@@ -1235,6 +1421,8 @@ function Dashboard({ userEmail, onLogout }) {
             <SectionHeading title={activeItem.label} subtitle={subtitles[activeTab]} />
             {loading ? (
               <div className="flex items-center gap-2 mt-10" style={{ color: C.textFaint }}><Loader2 size={16} className="animate-spin" /> chargement...</div>
+            ) : activeTab === "overview" ? (
+              <OverviewSection banks={banks} economies={economies} theses={theses} globalThesis={globalThesis} onNavigate={setActiveTab} />
             ) : activeTab === "banks" ? (
               <BanksSection banks={banks} onUpdateBank={updateBank} />
             ) : activeTab === "data" ? (
@@ -1253,7 +1441,7 @@ function Dashboard({ userEmail, onLogout }) {
       </div>
 
       <PrintView selection={exportSelection} banks={banks} economies={economies} drivers={drivers} globalThesis={globalThesis} theses={theses} trades={trades} />
-      {showExport && <ExportModal selection={exportSelection} setSelection={setExportSelection} banks={banks} economies={economies} drivers={drivers} theses={theses} trades={trades} onClose={() => setShowExport(false)} />}
+      {showExport && <ExportModal selection={exportSelection} setSelection={setExportSelection} banks={banks} economies={economies} drivers={drivers} theses={theses} trades={trades} autoBackups={autoBackups} onRestoreAutoBackup={restoreAutoBackup} onClose={() => setShowExport(false)} />}
     </div>
   );
 }
