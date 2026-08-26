@@ -561,12 +561,52 @@ function EconomyCard({ economy, onUpdate, onDelete, refOptions, onNavigateRef })
   );
 }
 
+function EconomicCalendarWidget() {
+  const containerRef = useRef(null);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    containerRef.current.innerHTML = '<div class="tradingview-widget-container__widget"></div>';
+    const script = document.createElement("script");
+    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-events.js";
+    script.type = "text/javascript";
+    script.async = true;
+    script.innerHTML = JSON.stringify({
+      colorTheme: "dark",
+      isTransparent: true,
+      width: "100%",
+      height: "560",
+      locale: "fr",
+      importanceFilter: "-1,0,1",
+      countryFilter: "us,eu,gb,jp,cn,ca,au,nz,ch,br,in,mx,kr,se,no,za",
+    });
+    containerRef.current.appendChild(script);
+  }, []);
+  return (
+    <div ref={containerRef} className="tradingview-widget-container" style={{ minHeight: 560 }}>
+      <div className="tradingview-widget-container__widget"></div>
+    </div>
+  );
+}
+
 function DataSection({ economies, onUpdateEconomy, onAddEconomy, onDeleteEconomy, refOptions, onNavigateRef }) {
   const [filter, setFilter] = useState("");
+  const [calendarOpen, setCalendarOpen] = useState(true);
   const q = filter.trim().toLowerCase();
   const filtered = economies.filter((e) => !q || e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q));
   return (
     <div>
+      <div className="rounded-xl mb-4 transition-colors overflow-hidden" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
+        <button onClick={() => setCalendarOpen(!calendarOpen)} className="flex items-center gap-2 w-full px-4 py-3 text-left">
+          {calendarOpen ? <ChevronDown size={14} color={C.textFaint} /> : <ChevronRight size={14} color={C.textFaint} />}
+          <span className="text-sm font-medium" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary }}>Calendrier économique en direct</span>
+          <span className="text-[10px] ml-auto" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>via TradingView</span>
+        </button>
+        {calendarOpen && (
+          <div className="px-2 pb-2">
+            <EconomicCalendarWidget />
+          </div>
+        )}
+      </div>
       <div className="flex items-center gap-2 mb-4">
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg flex-1" style={{ border: `1px solid ${C.border}` }}>
           <Search size={13} color={C.textFaint} />
