@@ -60,9 +60,13 @@ function UpdatedBadge({ updatedAt }) {
     </p>
   );
 }
-function HistoryList({ history }) {
+function HistoryList({ history, onUpdateEntry, onDeleteEntry }) {
   const [open, setOpen] = useState(false);
+  const [editingIdx, setEditingIdx] = useState(null);
+  const [draft, setDraft] = useState("");
   if (!history || history.length === 0) return null;
+  const startEdit = (idx, text) => { setEditingIdx(idx); setDraft(text); };
+  const saveEdit = (idx) => { onUpdateEntry(idx, draft); setEditingIdx(null); };
   return (
     <div className="mt-2">
       <button onClick={() => setOpen(!open)} className="flex items-center gap-1 text-[11px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>
@@ -70,10 +74,28 @@ function HistoryList({ history }) {
       </button>
       {open && (
         <div className="mt-1 pl-3 flex flex-col gap-1.5" style={{ borderLeft: `1px solid ${C.border}` }}>
-          {[...history].reverse().map((h, i) => (
-            <div key={i}>
-              <p className="text-[10px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{formatDate(h.date)}</p>
-              <p className="text-xs" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif" }}>{h.text}</p>
+          {history.map((h, idx) => ({ h, idx })).slice().reverse().map(({ h, idx }) => (
+            <div key={idx}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{formatDate(h.date)}</p>
+                {onUpdateEntry && editingIdx !== idx && (
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => startEdit(idx, h.text)} className="text-[10px]" style={{ color: C.gold, fontFamily: "'IBM Plex Sans', sans-serif" }}>modifier</button>
+                    {onDeleteEntry && <button onClick={() => onDeleteEntry(idx)} title="Supprimer cette entrée"><X size={10} color={C.textFaint} /></button>}
+                  </div>
+                )}
+              </div>
+              {editingIdx === idx ? (
+                <div className="mt-1">
+                  <textarea value={draft} onChange={(e) => setDraft(e.target.value)} className="bg-transparent outline-none w-full text-xs resize-none" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary, border: `1px solid ${C.border}`, borderRadius: 6, padding: 4 }} rows={2} />
+                  <div className="flex items-center gap-2 mt-1">
+                    <button onClick={() => saveEdit(idx)} className="text-[10px] px-2 py-0.5 rounded" style={{ backgroundColor: C.gold, color: C.ink, fontFamily: "'IBM Plex Sans', sans-serif" }}>Enregistrer</button>
+                    <button onClick={() => setEditingIdx(null)} className="text-[10px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>Annuler</button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif" }}>{h.text}</p>
+              )}
             </div>
           ))}
         </div>
@@ -96,7 +118,7 @@ const ASSET_CLASSES = ASSET_CLASS_DEFS.map((a) => a.label);
 function seedTheses() {
   const obj = {};
   ASSET_CLASS_DEFS.forEach((cls) => {
-    obj[cls.id] = { instruments: cls.seeds.map((s, i) => ({ id: `${cls.id}-${i}`, symbol: s, content: emptyContent(), history: [], updatedAt: null })) };
+    obj[cls.id] = { instruments: cls.seeds.map((s, i) => ({ id: `${cls.id}-${i}`, symbol: s, content: emptyContent(), history: [], archived: false, updatedAt: null })) };
   });
   return obj;
 }
@@ -537,7 +559,7 @@ function DriversSection({ drivers, onUpdate, onAdd, onDelete, onSetMain, refOpti
 }
 
 // ================= THÈSE MACRO =================
-function GlobalThesisCard({ content, updatedAt, history, onUpdate, onSnapshot, refOptions, onNavigateRef }) {
+function GlobalThesisCard({ content, updatedAt, history, onUpdate, onSnapshot, onUpdateHistoryEntry, onDeleteHistoryEntry, refOptions, onNavigateRef }) {
   return (
     <div className="rounded-xl p-4 mb-5" style={{ backgroundColor: C.surfaceRaised, border: `1px solid ${C.gold}` }}>
       <div className="flex items-center gap-2">
@@ -548,12 +570,13 @@ function GlobalThesisCard({ content, updatedAt, history, onUpdate, onSnapshot, r
         <RichContentEditor content={content} onChange={onUpdate} onSnapshot={onSnapshot} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Ta lecture d'ensemble : cycle, régime de marché, comment tout se connecte..." rows={5} />
       </div>
       {updatedAt && <UpdatedBadge updatedAt={updatedAt} />}
-      <HistoryList history={history} />
+      <HistoryList history={history} onUpdateEntry={onUpdateHistoryEntry} onDeleteEntry={onDeleteHistoryEntry} />
     </div>
   );
 }
 
-function InstrumentCard({ instrument, onUpdate, onDelete, refOptions, onNavigateRef, placeholder }) {
+function InstrumentRow({ instrument, onUpdate, onDelete, onArchiveToggle, refOptions, onNavigateRef, placeholder }) {
+  const [open, setOpen] = useState(false);
   const touch = (patch) => onUpdate({ ...instrument, ...patch, updatedAt: new Date().toISOString() });
   const snapshot = (text) => {
     if (!text || !text.trim()) return;
@@ -562,9 +585,24 @@ function InstrumentCard({ instrument, onUpdate, onDelete, refOptions, onNavigate
     const history = [...(instrument.history || []), { date: new Date().toISOString(), text }].slice(-15);
     onUpdate({ ...instrument, history });
   };
+  const updateHistoryEntry = (idx, text) => onUpdate({ ...instrument, history: instrument.history.map((h, i) => (i === idx ? { ...h, text } : h)) });
+  const deleteHistoryEntry = (idx) => onUpdate({ ...instrument, history: instrument.history.filter((_, i) => i !== idx) });
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-lg transition-colors hover:opacity-90" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
+        <Folder size={14} color={C.textFaint} />
+        <span className="text-sm font-medium flex-1 truncate" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: instrument.archived ? C.textFaint : C.textPrimary }}>{instrument.symbol || "(sans nom)"}</span>
+        {instrument.archived && <Archive size={12} color={C.textFaint} />}
+        {instrument.updatedAt && <span className="text-[10px] flex-shrink-0" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{formatDate(instrument.updatedAt)}</span>}
+      </button>
+    );
+  }
+
   return (
-    <div className="rounded-xl p-4" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
-      <div className="flex items-center justify-between gap-2">
+    <div className="rounded-xl p-4" style={{ backgroundColor: C.surface, border: `1px solid ${C.gold}` }}>
+      <div className="flex items-center gap-2">
+        <button onClick={() => setOpen(false)} className="p-0.5 flex-shrink-0" style={{ color: C.textFaint }}><ChevronDown size={14} /></button>
         <input value={instrument.symbol} onChange={(e) => touch({ symbol: e.target.value })} placeholder="Symbole" className="bg-transparent outline-none text-base font-medium flex-1 min-w-0" style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: C.textPrimary }} />
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <input
@@ -575,6 +613,7 @@ function InstrumentCard({ instrument, onUpdate, onDelete, refOptions, onNavigate
             className="bg-transparent outline-none text-[11px]"
             style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint, border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 5px" }}
           />
+          <button onClick={onArchiveToggle} title={instrument.archived ? "Désarchiver" : "Archiver"} style={{ color: instrument.archived ? C.gold : C.textFaint }}><Archive size={14} /></button>
           <button onClick={onDelete} className="p-0.5 rounded hover:opacity-70" style={{ color: C.textFaint }}><X size={14} /></button>
         </div>
       </div>
@@ -582,39 +621,59 @@ function InstrumentCard({ instrument, onUpdate, onDelete, refOptions, onNavigate
         <RichContentEditor content={instrument.content} onChange={(c) => touch({ content: c })} onSnapshot={snapshot} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder={placeholder} rows={3} />
       </div>
       {instrument.updatedAt && <UpdatedBadge updatedAt={instrument.updatedAt} />}
-      <HistoryList history={instrument.history} />
+      <HistoryList history={instrument.history} onUpdateEntry={updateHistoryEntry} onDeleteEntry={deleteHistoryEntry} />
     </div>
   );
 }
 
 function AssetClassBlock({ cls, data, onUpdateInstrument, onAdd, onDelete, refOptions, onNavigateRef }) {
   const [open, setOpen] = useState(cls.id === "forex");
+  const [showArchived, setShowArchived] = useState(false);
   const instruments = data?.instruments || [];
+  const visible = instruments.filter((i) => Boolean(i.archived) === showArchived);
+  const archivedCount = instruments.filter((i) => i.archived).length;
   return (
     <div className="mb-5">
       <button onClick={() => setOpen(!open)} className="flex items-center gap-1.5 w-full text-left mb-2" style={{ color: C.textPrimary, fontFamily: "'IBM Plex Sans', sans-serif" }}>
         {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
         <span style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: "1.1rem" }}>{cls.label}</span>
-        <span className="text-xs" style={{ color: C.textFaint }}>({instruments.length})</span>
+        <span className="text-xs" style={{ color: C.textFaint }}>({instruments.filter((i) => !i.archived).length})</span>
       </button>
       {open && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {instruments.map((inst) => (
-            <InstrumentCard key={inst.id} instrument={inst} onUpdate={(u) => onUpdateInstrument(inst.id, u)} onDelete={() => onDelete(inst.id)} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder={`Ta thèse et ton biais sur ${inst.symbol || "cet instrument"}...`} />
+        <div className="flex flex-col gap-1.5">
+          {visible.map((inst) => (
+            <InstrumentRow
+              key={inst.id}
+              instrument={inst}
+              onUpdate={(u) => onUpdateInstrument(inst.id, u)}
+              onDelete={() => onDelete(inst.id)}
+              onArchiveToggle={() => onUpdateInstrument(inst.id, { ...inst, archived: !inst.archived, updatedAt: new Date().toISOString() })}
+              refOptions={refOptions}
+              onNavigateRef={onNavigateRef}
+              placeholder={`Ta thèse et ton biais sur ${inst.symbol || "cet instrument"}...`}
+            />
           ))}
-          <button onClick={onAdd} className="flex items-center justify-center gap-1.5 text-sm rounded-xl" style={{ color: C.textSecondary, border: `1px dashed ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif", minHeight: 100 }}>
+          {visible.length === 0 && (
+            <p className="text-xs" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>{showArchived ? "Aucun instrument archivé." : "Aucun instrument."}</p>
+          )}
+          <button onClick={onAdd} className="flex items-center justify-center gap-1.5 text-sm rounded-xl py-2.5" style={{ color: C.textSecondary, border: `1px dashed ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
             <Plus size={14} /> Ajouter {cls.label.toLowerCase() === "actions" ? "une action" : "un instrument"}
           </button>
+          {archivedCount > 0 && (
+            <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-1 text-[11px] mt-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+              <Archive size={11} /> {showArchived ? "Retour aux instruments actifs" : `Voir les archives (${archivedCount})`}
+            </button>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function ThesisSection({ globalThesis, onUpdateGlobal, onSnapshotGlobal, theses, onUpdateInstrument, onAddInstrument, onDeleteInstrument, refOptions, onNavigateRef }) {
+function ThesisSection({ globalThesis, onUpdateGlobal, onSnapshotGlobal, onUpdateGlobalHistoryEntry, onDeleteGlobalHistoryEntry, theses, onUpdateInstrument, onAddInstrument, onDeleteInstrument, refOptions, onNavigateRef }) {
   return (
     <div>
-      <GlobalThesisCard content={globalThesis.content} updatedAt={globalThesis.updatedAt} history={globalThesis.history} onUpdate={onUpdateGlobal} onSnapshot={onSnapshotGlobal} refOptions={refOptions} onNavigateRef={onNavigateRef} />
+      <GlobalThesisCard content={globalThesis.content} updatedAt={globalThesis.updatedAt} history={globalThesis.history} onUpdate={onUpdateGlobal} onSnapshot={onSnapshotGlobal} onUpdateHistoryEntry={onUpdateGlobalHistoryEntry} onDeleteHistoryEntry={onDeleteGlobalHistoryEntry} refOptions={refOptions} onNavigateRef={onNavigateRef} />
       {ASSET_CLASS_DEFS.map((cls) => (
         <AssetClassBlock
           key={cls.id}
@@ -1044,6 +1103,16 @@ function Dashboard({ userEmail, onLogout }) {
     const next = { ...globalThesis, history };
     setGlobalThesis(next); persist("global-thesis-data-v2", next);
   };
+  const updateGlobalThesisHistoryEntry = (idx, text) => {
+    const history = globalThesis.history.map((h, i) => (i === idx ? { ...h, text } : h));
+    const next = { ...globalThesis, history };
+    setGlobalThesis(next); persist("global-thesis-data-v2", next);
+  };
+  const deleteGlobalThesisHistoryEntry = (idx) => {
+    const history = globalThesis.history.filter((_, i) => i !== idx);
+    const next = { ...globalThesis, history };
+    setGlobalThesis(next); persist("global-thesis-data-v2", next);
+  };
   const updateInstrument = (clsId, instId, updatedInst) => {
     const next = { ...theses, [clsId]: { instruments: theses[clsId].instruments.map((i) => (i.id === instId ? updatedInst : i)) } };
     setTheses(next); persist("theses-data-v2", next);
@@ -1051,7 +1120,7 @@ function Dashboard({ userEmail, onLogout }) {
   const addInstrument = (clsId) => {
     const symbol = window.prompt("Symbole (ex. USD, BTC, AAPL...) :");
     if (!symbol) return;
-    const next = { ...theses, [clsId]: { instruments: [...theses[clsId].instruments, { id: uid(), symbol, content: emptyContent(), history: [], updatedAt: null }] } };
+    const next = { ...theses, [clsId]: { instruments: [...theses[clsId].instruments, { id: uid(), symbol, content: emptyContent(), history: [], archived: false, updatedAt: null }] } };
     setTheses(next); persist("theses-data-v2", next);
   };
   const deleteInstrument = (clsId, instId) => {
@@ -1203,7 +1272,7 @@ function Dashboard({ userEmail, onLogout }) {
             ) : activeTab === "drivers" ? (
               <DriversSection drivers={drivers} onUpdate={updateDriver} onAdd={addDriver} onDelete={deleteDriver} onSetMain={setMainDriver} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "thesis" ? (
-              <ThesisSection globalThesis={globalThesis} onUpdateGlobal={updateGlobalThesis} onSnapshotGlobal={snapshotGlobalThesis} theses={theses} onUpdateInstrument={updateInstrument} onAddInstrument={addInstrument} onDeleteInstrument={deleteInstrument} refOptions={refOptions} onNavigateRef={onNavigateRef} />
+              <ThesisSection globalThesis={globalThesis} onUpdateGlobal={updateGlobalThesis} onSnapshotGlobal={snapshotGlobalThesis} onUpdateGlobalHistoryEntry={updateGlobalThesisHistoryEntry} onDeleteGlobalHistoryEntry={deleteGlobalThesisHistoryEntry} theses={theses} onUpdateInstrument={updateInstrument} onAddInstrument={addInstrument} onDeleteInstrument={deleteInstrument} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "trades" ? (
               <TradesSection trades={trades} onUpdate={updateTrade} onAdd={addTrade} onDelete={deleteTrade} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "watchlist" ? (
