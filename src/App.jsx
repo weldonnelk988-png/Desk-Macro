@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Landmark, BarChart3, Compass, ScrollText, Target, Plus, X, ChevronDown, ChevronRight, Loader2, Star, Globe2, Download, Link2, Image as ImageIcon, Search, LogOut, Eye, AlertTriangle } from "lucide-react";
+import { Compass, ScrollText, Target, Plus, X, ChevronDown, ChevronRight, Loader2, Star, Globe2, Download, Link2, Image as ImageIcon, Search, LogOut, Eye, AlertTriangle, StickyNote, Folder, Archive } from "lucide-react";
 import { storageGet, storageSet } from "./storage";
 import { auth } from "./firebase";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
@@ -83,37 +83,6 @@ function HistoryList({ history }) {
 }
 
 // ---------- Seed data ----------
-const SEED_BANKS = [
-  { code: "FED", name: "Réserve fédérale", zone: "États-Unis" },
-  { code: "BCE", name: "Banque centrale européenne", zone: "Zone euro" },
-  { code: "BoE", name: "Bank of England", zone: "Royaume-Uni" },
-  { code: "BoJ", name: "Bank of Japan", zone: "Japon" },
-  { code: "BoC", name: "Banque du Canada", zone: "Canada" },
-  { code: "RBA", name: "Reserve Bank of Australia", zone: "Australie" },
-  { code: "RBNZ", name: "Reserve Bank of New Zealand", zone: "Nouvelle-Zélande" },
-  { code: "SNB", name: "Banque nationale suisse", zone: "Suisse" },
-].map((b, i) => ({ id: `bank-${i}`, ...b, bias: null, members: [], updatedAt: null }));
-
-const ECON_CATEGORIES = [
-  { id: "inflation", label: "Inflation" },
-  { id: "emploi", label: "Emploi" },
-  { id: "croissance", label: "Croissance" },
-  { id: "activite", label: "Activité (PMI & co)" },
-  { id: "confiance", label: "Confiance / Sentiment" },
-];
-
-const SEED_ECONOMIES = [
-  { code: "US", name: "États-Unis" },
-  { code: "EUR", name: "Zone euro" },
-  { code: "UK", name: "Royaume-Uni" },
-  { code: "JP", name: "Japon" },
-  { code: "CN", name: "Chine" },
-  { code: "CA", name: "Canada" },
-  { code: "AU", name: "Australie" },
-  { code: "NZ", name: "Nouvelle-Zélande" },
-  { code: "CH", name: "Suisse" },
-].map((e, i) => ({ id: `econ-${i}`, ...e, updatedAt: null, categories: ECON_CATEGORIES.map((c) => ({ ...c, indicators: [] })) }));
-
 const ASSET_CLASS_DEFS = [
   { id: "forex", label: "Forex", seeds: ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "CNY"] },
   { id: "crypto", label: "Crypto", seeds: ["BTC", "ETH"] },
@@ -149,12 +118,11 @@ const DIRECTIONS = [
 
 const NAV_ITEMS = [
   { id: "overview", label: "Vue d'ensemble", icon: AlertTriangle },
-  { id: "banks", label: "Banques Centrales", icon: Landmark },
-  { id: "data", label: "Data Économique", icon: BarChart3 },
   { id: "drivers", label: "Drivers Macro", icon: Compass },
   { id: "thesis", label: "Thèse Macro", icon: ScrollText },
   { id: "trades", label: "Trades", icon: Target },
   { id: "watchlist", label: "Watchlist", icon: Eye },
+  { id: "notebook", label: "Bloc-Note", icon: StickyNote },
 ];
 
 // ---------- Shared bits ----------
@@ -179,7 +147,7 @@ function SectionHeading({ title, subtitle }) {
   );
 }
 
-// Reusable rich content editor: text + images (url) + links + @ references to Banks/Data/Drivers
+// Reusable rich content editor: text + images (url) + links + @ references to Drivers/Thèse/Trades
 function RichContentEditor({ content, onChange, refOptions, onNavigateRef, placeholder, rows = 4, onSnapshot }) {
   const addImage = () => {
     const url = window.prompt("URL de l'image :");
@@ -204,7 +172,7 @@ function RichContentEditor({ content, onChange, refOptions, onNavigateRef, place
     }
     e.target.value = "";
   };
-  const refColor = { bank: C.hawk, driver: C.gold, data: C.dove, instrument: C.neutral, trade: C.trade };
+  const refColor = { driver: C.gold, instrument: C.neutral, trade: C.trade };
 
   return (
     <div>
@@ -263,16 +231,6 @@ function RichContentEditor({ content, onChange, refOptions, onNavigateRef, place
         </button>
         <select onChange={addRef} defaultValue="" className="text-[11px] px-2 py-1 rounded-md bg-transparent" style={{ color: C.textSecondary, border: `1px dashed ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
           <option value="" style={{ color: "#000" }}>@ Référencer...</option>
-          {refOptions.filter((o) => o.type === "bank").length > 0 && (
-            <optgroup label="Banques Centrales" style={{ color: "#000" }}>
-              {refOptions.filter((o) => o.type === "bank").map((o) => (<option key={`${o.type}:${o.id}`} value={`${o.type}:${o.id}`} style={{ color: "#000" }}>{o.label}</option>))}
-            </optgroup>
-          )}
-          {refOptions.filter((o) => o.type === "data").length > 0 && (
-            <optgroup label="Data Économique" style={{ color: "#000" }}>
-              {refOptions.filter((o) => o.type === "data").map((o) => (<option key={`${o.type}:${o.id}`} value={`${o.type}:${o.id}`} style={{ color: "#000" }}>{o.label}</option>))}
-            </optgroup>
-          )}
           {refOptions.filter((o) => o.type === "driver").length > 0 && (
             <optgroup label="Drivers Macro" style={{ color: "#000" }}>
               {refOptions.filter((o) => o.type === "driver").map((o) => (<option key={`${o.type}:${o.id}`} value={`${o.type}:${o.id}`} style={{ color: "#000" }}>{o.label}</option>))}
@@ -297,344 +255,181 @@ function RichContentEditor({ content, onChange, refOptions, onNavigateRef, place
   );
 }
 
-// ================= BANQUES CENTRALES =================
-function VoteBar({ members }) {
-  const hawks = members.filter((m) => m.vote === "hawkish").length;
-  const doves = members.filter((m) => m.vote === "dovish").length;
-  const neutrals = members.filter((m) => m.vote === "neutral").length;
-  const total = hawks + doves + neutrals;
-  if (total === 0) return <div className="w-full h-2 rounded-full" style={{ backgroundColor: C.border }} />;
+// ================= BLOC-NOTE =================
+function ChecklistEditor({ items, onChange }) {
+  const list = items || [];
+  const addItem = () => onChange([...list, { id: uid(), text: "", done: false }]);
+  const updateItem = (id, patch) => onChange(list.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  const deleteItem = (id) => onChange(list.filter((it) => it.id !== id));
   return (
-    <div>
-      <div className="w-full h-2 rounded-full overflow-hidden flex" style={{ backgroundColor: C.border }}>
-        {hawks > 0 && <div style={{ width: `${(hawks / total) * 100}%`, backgroundColor: C.hawk }} />}
-        {neutrals > 0 && <div style={{ width: `${(neutrals / total) * 100}%`, backgroundColor: C.neutral }} />}
-        {doves > 0 && <div style={{ width: `${(doves / total) * 100}%`, backgroundColor: C.dove }} />}
-      </div>
-      <div className="flex gap-3 mt-1.5 text-[11px]" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
-        <span style={{ color: C.hawk }}>{hawks} hawk{hawks > 1 ? "s" : ""}</span>
-        <span style={{ color: C.dove }}>{doves} dove{doves > 1 ? "s" : ""}</span>
-        {neutrals > 0 && <span style={{ color: C.neutral }}>{neutrals} neutre{neutrals > 1 ? "s" : ""}</span>}
-      </div>
-    </div>
-  );
-}
-
-function MemberRow({ member, onUpdate, onDelete }) {
-  const [editingNote, setEditingNote] = useState(false);
-  const voteColors = { hawkish: C.hawk, dovish: C.dove, neutral: C.neutral };
-  return (
-    <div className="rounded-lg p-3 mb-2" style={{ backgroundColor: C.ink, border: `1px solid ${C.border}` }}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <input value={member.name} onChange={(e) => onUpdate({ ...member, name: e.target.value })} placeholder="Nom du membre" className="bg-transparent outline-none w-full text-sm font-medium" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary }} />
-          <input value={member.role} onChange={(e) => onUpdate({ ...member, role: e.target.value })} placeholder="Fonction (ex. Présidente, Gouverneur...)" className="bg-transparent outline-none w-full text-xs mt-0.5" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textFaint }} />
+    <div className="mt-2">
+      {list.map((it) => (
+        <div key={it.id} className="flex items-center gap-2 mb-1">
+          <input type="checkbox" checked={it.done} onChange={(e) => updateItem(it.id, { done: e.target.checked })} />
+          <input
+            value={it.text}
+            onChange={(e) => updateItem(it.id, { text: e.target.value })}
+            placeholder="Tâche..."
+            className="bg-transparent outline-none text-xs flex-1"
+            style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: it.done ? C.textFaint : C.textSecondary, textDecoration: it.done ? "line-through" : "none" }}
+          />
+          <button onClick={() => deleteItem(it.id)}><X size={12} color={C.textFaint} /></button>
         </div>
-        <button onClick={onDelete} className="p-1 rounded hover:opacity-70 flex-shrink-0" style={{ color: C.textFaint }}><X size={14} /></button>
-      </div>
-      <div className="flex gap-1.5 mt-2">
-        {["hawkish", "dovish", "neutral"].map((v) => (
-          <button key={v} onClick={() => onUpdate({ ...member, vote: member.vote === v ? null : v })} className="px-2 py-1 rounded text-[11px] font-medium" style={{ fontFamily: "'IBM Plex Mono', monospace", backgroundColor: member.vote === v ? voteColors[v] : "transparent", color: member.vote === v ? C.ink : C.textSecondary, border: `1px solid ${member.vote === v ? voteColors[v] : C.border}` }}>
-            {v === "hawkish" ? "Hawk" : v === "dovish" ? "Dove" : "Neutre"}
-          </button>
-        ))}
-      </div>
-      <div className="mt-2">
-        {editingNote || member.note ? (
-          <textarea value={member.note} onChange={(e) => onUpdate({ ...member, note: e.target.value })} onBlur={() => setEditingNote(false)} placeholder="Note (ex. déclaration du 12/08...)" className="bg-transparent outline-none w-full text-xs resize-none" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }} rows={2} autoFocus={editingNote} />
-        ) : (
-          <button onClick={() => setEditingNote(true)} className="text-[11px]" style={{ color: C.textFaint }}>+ ajouter une note</button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function RateExpectationsBlock({ bank, onUpdate }) {
-  const touch = (patch) => onUpdate({ ...bank, ...patch, updatedAt: new Date().toISOString() });
-  const exp = bank.marketExpectations || { meeting1: "", meeting2: "", year2026: "", strength: null };
-  const updateExp = (patch) => touch({ marketExpectations: { ...exp, ...patch } });
-  const strengthOpts = [{ key: "faible", label: "Faible" }, { key: "moderee", label: "Modérée" }, { key: "forte", label: "Forte" }];
-  const tension = bank.bias === "hawkish" && exp.strength === "forte";
-  const inputStyle = { fontFamily: "'IBM Plex Mono', monospace", color: C.textSecondary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 7px" };
-  return (
-    <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${C.border}` }}>
-      <p className="text-[10px] uppercase tracking-wide mb-1.5" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>Taux &amp; attentes de marché</p>
-      <input
-        value={bank.currentRate || ""}
-        onChange={(e) => touch({ currentRate: e.target.value })}
-        placeholder="Taux directeur actuel (ex. 5,25 – 5,50 %)"
-        className="bg-transparent outline-none w-full text-xs mb-1.5"
-        style={{ ...inputStyle, color: C.textPrimary, fontWeight: 500 }}
-      />
-      <div className="grid grid-cols-2 gap-1.5">
-        <div>
-          <input value={exp.meeting1} onChange={(e) => updateExp({ meeting1: e.target.value })} placeholder="Prochaine réunion (ex. -25 pb)" className="bg-transparent outline-none text-xs w-full" style={inputStyle} />
-          <input type="date" value={exp.nextMeetingDate1 || ""} onChange={(e) => updateExp({ nextMeetingDate1: e.target.value })} title="Date de la prochaine réunion" className="bg-transparent outline-none text-[10px] w-full mt-1" style={{ ...inputStyle, color: C.textFaint }} />
-        </div>
-        <div>
-          <input value={exp.meeting2} onChange={(e) => updateExp({ meeting2: e.target.value })} placeholder="Réunion suivante" className="bg-transparent outline-none text-xs w-full" style={inputStyle} />
-          <input type="date" value={exp.nextMeetingDate2 || ""} onChange={(e) => updateExp({ nextMeetingDate2: e.target.value })} title="Date de la réunion suivante" className="bg-transparent outline-none text-[10px] w-full mt-1" style={{ ...inputStyle, color: C.textFaint }} />
-        </div>
-      </div>
-      <input value={exp.year2026} onChange={(e) => updateExp({ year2026: e.target.value })} placeholder="Attentes fin 2026 (ex. -75 pb cumulés)" className="bg-transparent outline-none w-full text-xs mt-1.5" style={inputStyle} />
-      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-        <span className="text-[10px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>Force des attentes :</span>
-        {strengthOpts.map((o) => (
-          <button
-            key={o.key}
-            onClick={() => updateExp({ strength: exp.strength === o.key ? null : o.key })}
-            className="px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors"
-            style={{ fontFamily: "'IBM Plex Mono', monospace", backgroundColor: exp.strength === o.key ? C.gold : "transparent", color: exp.strength === o.key ? C.ink : C.textFaint, border: `1px solid ${exp.strength === o.key ? C.gold : C.border}` }}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-      {tension && (
-        <div className="mt-2 rounded-md px-2 py-1.5 text-[11px] font-medium" style={{ backgroundColor: C.stale, color: "#fff", fontFamily: "'IBM Plex Sans', sans-serif" }}>
-          ⚠ Tension : biais hawkish alors que le marché price des attentes fortes
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BankCard({ bank, onUpdate }) {
-  const [open, setOpen] = useState(false);
-  const touch = (patch) => onUpdate({ ...bank, ...patch, updatedAt: new Date().toISOString() });
-  const setBias = (bias) => touch({ bias: bank.bias === bias ? null : bias });
-  const addMember = () => { touch({ members: [...bank.members, { id: uid(), name: "", role: "", vote: null, note: "" }] }); setOpen(true); };
-  const updateMember = (id, updated) => touch({ members: bank.members.map((m) => (m.id === id ? updated : m)) });
-  const deleteMember = (id) => touch({ members: bank.members.filter((m) => m.id !== id) });
-  const biasLabel = { hawkish: "Hawkish", dovish: "Dovish", "data-dependent": "Data-dependent" };
-  const biasColor = { hawkish: C.hawk, dovish: C.dove, "data-dependent": C.neutral };
-  const tension = bank.bias === "hawkish" && bank.marketExpectations?.strength === "forte";
-
-  return (
-    <div className="rounded-xl p-4 overflow-hidden" style={{ backgroundColor: C.surface, border: `1px solid ${tension ? C.stale : C.border}` }}>
-      <div className="flex items-baseline gap-2">
-        <h3 className="text-lg leading-none" style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: C.textPrimary }}>{bank.code}</h3>
-        {bank.bias && <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded" style={{ fontFamily: "'IBM Plex Mono', monospace", color: biasColor[bank.bias], border: `1px solid ${biasColor[bank.bias]}` }}>{biasLabel[bank.bias]}</span>}
-        {bank.currentRate && <span className="text-[10px] ml-auto" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{bank.currentRate}</span>}
-      </div>
-      <p className="text-xs mt-0.5" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>{bank.name} · {bank.zone}</p>
-      <div className="flex gap-1.5 mt-3">
-        <TagButton active={bank.bias === "hawkish"} color={C.hawk} label="Hawkish" onClick={() => setBias("hawkish")} />
-        <TagButton active={bank.bias === "dovish"} color={C.dove} label="Dovish" onClick={() => setBias("dovish")} />
-        <TagButton active={bank.bias === "data-dependent"} color={C.neutral} label="Data-dependent" onClick={() => setBias("data-dependent")} />
-      </div>
-      <div className="mt-3"><VoteBar members={bank.members} /></div>
-      <button onClick={() => setOpen(!open)} className="flex items-center gap-1 mt-3 text-xs" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif" }}>
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Membres ({bank.members.length})
-      </button>
-      {open && (
-        <div className="mt-2">
-          {bank.members.map((m) => (<MemberRow key={m.id} member={m} onUpdate={(u) => updateMember(m.id, u)} onDelete={() => deleteMember(m.id)} />))}
-          <button onClick={addMember} className="flex items-center gap-1 text-xs mt-1 px-2 py-1.5 rounded-md w-full justify-center" style={{ color: C.textSecondary, border: `1px dashed ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
-            <Plus size={13} /> Ajouter un membre
-          </button>
-        </div>
-      )}
-      <RateExpectationsBlock bank={bank} onUpdate={onUpdate} />
-      {bank.updatedAt && <UpdatedBadge updatedAt={bank.updatedAt} />}
-    </div>
-  );
-}
-
-function BanksSection({ banks, onUpdateBank }) {
-  return <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{banks.map((b) => <BankCard key={b.id} bank={b} onUpdate={onUpdateBank} />)}</div>;
-}
-
-// ================= DATA ÉCONOMIQUE =================
-function SurpriseTag({ value, onChange }) {
-  const opts = [{ key: "above", label: "Au-dessus", color: C.hawk }, { key: "inline", label: "En ligne", color: C.neutral }, { key: "below", label: "En dessous", color: C.dove }];
-  return (
-    <div className="flex gap-1">
-      {opts.map((o) => (
-        <button key={o.key} onClick={() => onChange(value === o.key ? null : o.key)} className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ fontFamily: "'IBM Plex Mono', monospace", backgroundColor: value === o.key ? o.color : "transparent", color: value === o.key ? C.ink : C.textFaint, border: `1px solid ${value === o.key ? o.color : C.border}` }}>{o.label}</button>
       ))}
+      <button onClick={addItem} className="flex items-center gap-1 text-[11px] mt-1 px-2 py-1 rounded-md w-full justify-center transition-colors hover:opacity-80" style={{ color: C.textSecondary, border: `1px dashed ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+        <Plus size={12} /> Tâche
+      </button>
     </div>
   );
 }
 
-function IndicatorRow({ indicator, onUpdate, onDelete, refOptions, onNavigateRef }) {
-  const content = ensureContent(indicator.content || { text: indicator.note || "" });
+function TagEditor({ tags, onChange }) {
+  const [input, setInput] = useState("");
+  const list = tags || [];
+  const addTag = () => {
+    const t = input.trim();
+    if (!t || list.includes(t)) { setInput(""); return; }
+    onChange([...list, t]);
+    setInput("");
+  };
+  const removeTag = (t) => onChange(list.filter((x) => x !== t));
+  return (
+    <div className="flex flex-wrap items-center gap-1 mt-1.5">
+      {list.map((t) => (
+        <span key={t} className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.gold, border: `1px solid ${C.gold}` }}>
+          #{t} <button onClick={() => removeTag(t)}><X size={9} /></button>
+        </span>
+      ))}
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
+        onBlur={addTag}
+        placeholder="+ tag"
+        className="bg-transparent outline-none text-[10px] w-16"
+        style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint }}
+      />
+    </div>
+  );
+}
+
+function NoteCard({ note, folders, onUpdate, onDelete, refOptions, onNavigateRef }) {
+  const touch = (patch) => onUpdate({ ...note, ...patch, updatedAt: new Date().toISOString() });
   const snapshot = (text) => {
     if (!text || !text.trim()) return;
-    const last = indicator.history?.[indicator.history.length - 1]?.text;
+    const last = note.history?.[note.history.length - 1]?.text;
     if (text === last) return;
-    const history = [...(indicator.history || []), { date: new Date().toISOString(), text }].slice(-15);
-    onUpdate({ ...indicator, history });
+    const history = [...(note.history || []), { date: new Date().toISOString(), text }].slice(-15);
+    onUpdate({ ...note, history });
   };
+  const openCount = (note.checklist || []).filter((c) => !c.done).length;
   return (
-    <div className="rounded-lg p-2.5 mb-1.5" style={{ backgroundColor: C.ink, border: `1px solid ${C.border}` }}>
-      <div className="flex items-start justify-between gap-2">
-        <input value={indicator.name} onChange={(e) => onUpdate({ ...indicator, name: e.target.value })} placeholder="Nom de l'indicateur (ex. Chômage, sous-indice PMI...)" className="bg-transparent outline-none flex-1 text-sm font-medium" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary }} />
-        <button onClick={onDelete} className="p-0.5 rounded hover:opacity-70 flex-shrink-0" style={{ color: C.textFaint }}><X size={13} /></button>
-      </div>
-      <div className="flex gap-2 mt-1.5">
-        <input value={indicator.value} onChange={(e) => onUpdate({ ...indicator, value: e.target.value })} placeholder="Valeur" className="bg-transparent outline-none text-xs w-20" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textPrimary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 6px" }} />
-        <input value={indicator.expected} onChange={(e) => onUpdate({ ...indicator, expected: e.target.value })} placeholder="Attendu" className="bg-transparent outline-none text-xs w-20" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textSecondary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 6px" }} />
-        <input type="date" value={indicator.nextRelease || ""} onChange={(e) => onUpdate({ ...indicator, nextRelease: e.target.value })} title="Prochaine publication" className="bg-transparent outline-none text-xs flex-1" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textSecondary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 6px" }} />
-      </div>
-      <div className="mt-1.5"><SurpriseTag value={indicator.surprise} onChange={(v) => onUpdate({ ...indicator, surprise: v })} /></div>
-      <div className="mt-1.5">
-        <RichContentEditor content={content} onChange={(c) => onUpdate({ ...indicator, content: c, note: undefined })} onSnapshot={snapshot} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Note / interprétation..." rows={1} />
-      </div>
-      <HistoryList history={indicator.history} />
-    </div>
-  );
-}
-
-function CategoryBlock({ category, onUpdate, onDelete, refOptions, onNavigateRef }) {
-  const [open, setOpen] = useState(false);
-  const addIndicator = () => { onUpdate({ ...category, indicators: [...category.indicators, { id: uid(), name: "", value: "", expected: "", nextRelease: "", surprise: null, content: emptyContent(), history: [] }] }); setOpen(true); };
-  const updateIndicator = (id, updated) => onUpdate({ ...category, indicators: category.indicators.map((i) => (i.id === id ? updated : i)) });
-  const deleteIndicator = (id) => onUpdate({ ...category, indicators: category.indicators.filter((i) => i.id !== id) });
-  return (
-    <div className="mt-2 rounded-lg transition-colors" style={{ border: `1px solid ${C.border}` }}>
-      <div className="flex items-center gap-1.5 px-2 py-1.5">
-        <button onClick={() => setOpen(!open)} className="p-0.5 flex-shrink-0 transition-transform" style={{ color: C.textSecondary }}>
-          {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+    <div className="rounded-xl p-4" style={{ backgroundColor: C.surface, border: `1px solid ${note.pinned ? C.gold : C.border}` }}>
+      <div className="flex items-start gap-2">
+        <button onClick={() => touch({ pinned: !note.pinned })} className="mt-0.5 flex-shrink-0" title="Épingler">
+          <Star size={16} fill={note.pinned ? C.gold : "none"} color={note.pinned ? C.gold : C.textFaint} strokeWidth={1.5} />
         </button>
-        <input
-          value={category.label}
-          onChange={(e) => onUpdate({ ...category, label: e.target.value })}
-          placeholder="Nom de la catégorie"
-          className="bg-transparent outline-none text-xs font-medium flex-1 min-w-0"
-          style={{ color: C.textPrimary, fontFamily: "'IBM Plex Sans', sans-serif" }}
-        />
-        <span className="text-[11px] flex-shrink-0" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{category.indicators.length}</span>
-        {onDelete && (
-          <button onClick={onDelete} className="p-0.5 rounded flex-shrink-0 hover:opacity-70" style={{ color: C.textFaint }} title="Supprimer la catégorie">
-            <X size={12} />
-          </button>
-        )}
-      </div>
-      <div style={{ maxHeight: open ? 5000 : 0, overflow: "hidden", transition: "max-height 0.25s ease" }}>
-        <div className="px-2.5 pb-2.5 pt-0.5">
-          {category.indicators.map((ind) => (<IndicatorRow key={ind.id} indicator={ind} onUpdate={(u) => updateIndicator(ind.id, u)} onDelete={() => deleteIndicator(ind.id)} refOptions={refOptions} onNavigateRef={onNavigateRef} />))}
-          <button onClick={addIndicator} className="flex items-center gap-1 text-[11px] mt-1 px-2 py-1 rounded-md w-full justify-center transition-colors hover:opacity-80" style={{ color: C.textSecondary, border: `1px dashed ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
-            <Plus size={12} /> Ajouter un indicateur
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EconomyCard({ economy, onUpdate, onDelete, refOptions, onNavigateRef }) {
-  const [collapsed, setCollapsed] = useState(false);
-  const touch = (patch) => onUpdate({ ...economy, ...patch, updatedAt: new Date().toISOString() });
-  const updateCategory = (catId, updatedCat) => touch({ categories: economy.categories.map((c) => (c.id === catId ? updatedCat : c)) });
-  const deleteCategory = (catId) => touch({ categories: economy.categories.filter((c) => c.id !== catId) });
-  const addCategory = () => {
-    const label = window.prompt("Nom de la nouvelle catégorie (ex. Immobilier, Commerce extérieur...) :");
-    if (!label) return;
-    touch({ categories: [...economy.categories, { id: uid(), label, indicators: [] }] });
-  };
-  const total = economy.categories.reduce((s, c) => s + c.indicators.length, 0);
-  return (
-    <div className="rounded-xl p-4 transition-colors" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
-      <div className="flex items-center gap-2">
-        <button onClick={() => setCollapsed(!collapsed)} className="p-0.5 flex-shrink-0" style={{ color: C.textFaint }}>
-          {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+        <input value={note.title} onChange={(e) => touch({ title: e.target.value })} placeholder="Titre de la note" className="bg-transparent outline-none flex-1 text-base font-medium" style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: C.textPrimary }} />
+        <button onClick={() => touch({ archived: !note.archived })} className="p-0.5 flex-shrink-0" title={note.archived ? "Désarchiver" : "Archiver"} style={{ color: note.archived ? C.gold : C.textFaint }}>
+          <Archive size={14} />
         </button>
-        <h3 className="text-lg leading-none flex-shrink-0" style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: C.textPrimary }}>{economy.code}</h3>
-        <span className="text-xs truncate" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>{economy.name}</span>
-        {total > 0 && <span className="text-[10px] ml-auto flex-shrink-0" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{total} indicateur{total > 1 ? "s" : ""}</span>}
-        {onDelete && (
-          <button onClick={onDelete} className="p-0.5 rounded flex-shrink-0 hover:opacity-70" style={{ color: C.textFaint }} title="Supprimer l'économie">
-            <X size={14} />
-          </button>
-        )}
+        <button onClick={onDelete} className="p-0.5 rounded hover:opacity-70 flex-shrink-0" style={{ color: C.textFaint }}><X size={14} /></button>
       </div>
-      <div style={{ maxHeight: collapsed ? 0 : 20000, overflow: "hidden", transition: "max-height 0.25s ease" }}>
-        <div className="mt-1">{economy.categories.map((cat) => (<CategoryBlock key={cat.id} category={cat} onUpdate={(u) => updateCategory(cat.id, u)} onDelete={() => deleteCategory(cat.id)} refOptions={refOptions} onNavigateRef={onNavigateRef} />))}</div>
-        <button onClick={addCategory} className="flex items-center gap-1 text-[11px] mt-2 px-2 py-1 rounded-md w-full justify-center transition-colors hover:opacity-80" style={{ color: C.gold, border: `1px dashed ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
-          <Plus size={12} /> Ajouter une catégorie
-        </button>
-        {economy.updatedAt && <UpdatedBadge updatedAt={economy.updatedAt} />}
+      <select
+        value={note.folderId || ""}
+        onChange={(e) => touch({ folderId: e.target.value || null })}
+        className="mt-2 ml-6 text-[11px] bg-transparent outline-none"
+        style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint, border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 5px" }}
+      >
+        <option value="" style={{ color: "#000" }}>Sans dossier</option>
+        {folders.map((f) => (<option key={f.id} value={f.id} style={{ color: "#000" }}>{f.name}</option>))}
+      </select>
+      <div className="mt-2 ml-6" style={{ width: "calc(100% - 1.5rem)" }}>
+        <RichContentEditor content={ensureContent(note.content)} onChange={(c) => touch({ content: c })} onSnapshot={snapshot} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Écris ta note..." rows={3} />
       </div>
+      <div className="ml-6">
+        <TagEditor tags={note.tags} onChange={(tags) => touch({ tags })} />
+        <ChecklistEditor items={note.checklist} onChange={(checklist) => touch({ checklist })} />
+        {openCount > 0 && <p className="text-[10px] mt-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{openCount} tâche{openCount > 1 ? "s" : ""} en cours</p>}
+      </div>
+      {note.updatedAt && <UpdatedBadge updatedAt={note.updatedAt} />}
+      <div className="ml-6"><HistoryList history={note.history} /></div>
     </div>
   );
 }
 
-function EconomicCalendarWidget() {
-  const containerRef = useRef(null);
-  useEffect(() => {
-    if (!containerRef.current) return;
-    containerRef.current.innerHTML = '<div class="tradingview-widget-container__widget"></div>';
-    const script = document.createElement("script");
-    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-events.js";
-    script.type = "text/javascript";
-    script.async = true;
-    script.innerHTML = JSON.stringify({
-      colorTheme: "dark",
-      isTransparent: true,
-      width: "100%",
-      height: "560",
-      locale: "fr",
-      importanceFilter: "-1,0,1",
-      countryFilter: "us,eu,gb,jp,cn,ca,au,nz,ch,br,in,mx,kr,se,no,za",
-    });
-    containerRef.current.appendChild(script);
-  }, []);
-  return (
-    <div ref={containerRef} className="tradingview-widget-container" style={{ minHeight: 560 }}>
-      <div className="tradingview-widget-container__widget"></div>
-    </div>
-  );
-}
+function NotebookSection({ notebook, onUpdate, onAddNote, onDeleteNote, onAddFolder, onDeleteFolder, refOptions, onNavigateRef }) {
+  const [search, setSearch] = useState("");
+  const [activeFolder, setActiveFolder] = useState("all");
+  const [activeTag, setActiveTag] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
 
-function DataSection({ economies, onUpdateEconomy, onAddEconomy, onDeleteEconomy, refOptions, onNavigateRef }) {
-  const [filter, setFilter] = useState("");
-  const [calendarOpen, setCalendarOpen] = useState(true);
-  const q = filter.trim().toLowerCase();
-  const filtered = economies.filter((e) => !q || e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q));
+  const notes = notebook.notes || [];
+  const folders = notebook.folders || [];
+  const allTags = [...new Set(notes.flatMap((n) => n.tags || []))];
+
+  const q = search.trim().toLowerCase();
+  let filtered = notes.filter((n) => Boolean(n.archived) === showArchived);
+  if (activeFolder === "none") filtered = filtered.filter((n) => !n.folderId);
+  else if (activeFolder !== "all") filtered = filtered.filter((n) => n.folderId === activeFolder);
+  if (activeTag) filtered = filtered.filter((n) => (n.tags || []).includes(activeTag));
+  if (q) filtered = filtered.filter((n) => (n.title || "").toLowerCase().includes(q) || (n.content?.text || "").toLowerCase().includes(q) || (n.tags || []).some((t) => t.toLowerCase().includes(q)));
+  filtered = [...filtered].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+  const updateNote = (updated) => onUpdate({ ...notebook, notes: notes.map((n) => (n.id === updated.id ? updated : n)) });
+
   return (
     <div>
-      <div className="rounded-xl mb-4 transition-colors overflow-hidden" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
-        <button onClick={() => setCalendarOpen(!calendarOpen)} className="flex items-center gap-2 w-full px-4 py-3 text-left">
-          {calendarOpen ? <ChevronDown size={14} color={C.textFaint} /> : <ChevronRight size={14} color={C.textFaint} />}
-          <span className="text-sm font-medium" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary }}>Calendrier économique en direct</span>
-          <span className="text-[10px] ml-auto" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>via TradingView</span>
-        </button>
-        {calendarOpen && (
-          <div className="px-2 pb-2">
-            <EconomicCalendarWidget />
-          </div>
-        )}
-      </div>
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-3">
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg flex-1" style={{ border: `1px solid ${C.border}` }}>
           <Search size={13} color={C.textFaint} />
-          <input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filtrer les économies..."
-            className="bg-transparent outline-none text-xs flex-1"
-            style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary }}
-          />
-          {filter && <button onClick={() => setFilter("")}><X size={12} color={C.textFaint} /></button>}
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher dans les notes..." className="bg-transparent outline-none text-xs flex-1" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary }} />
+          {search && <button onClick={() => setSearch("")}><X size={12} color={C.textFaint} /></button>}
         </div>
-        <button onClick={onAddEconomy} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg flex-shrink-0 transition-colors hover:opacity-80" style={{ color: C.gold, border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
-          <Plus size={13} /> Économie
+        <button onClick={onAddNote} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg flex-shrink-0 transition-colors hover:opacity-80" style={{ color: C.gold, border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          <Plus size={13} /> Note
         </button>
       </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 mb-2">
+        <button onClick={() => setActiveFolder("all")} className="text-[11px] px-2 py-1 rounded-md transition-colors" style={{ fontFamily: "'IBM Plex Sans', sans-serif", backgroundColor: activeFolder === "all" ? C.gold : "transparent", color: activeFolder === "all" ? C.ink : C.textSecondary, border: `1px solid ${activeFolder === "all" ? C.gold : C.border}` }}>Toutes</button>
+        <button onClick={() => setActiveFolder("none")} className="text-[11px] px-2 py-1 rounded-md transition-colors" style={{ fontFamily: "'IBM Plex Sans', sans-serif", backgroundColor: activeFolder === "none" ? C.gold : "transparent", color: activeFolder === "none" ? C.ink : C.textSecondary, border: `1px solid ${activeFolder === "none" ? C.gold : C.border}` }}>Sans dossier</button>
+        {folders.map((f) => (
+          <span key={f.id} className="flex items-center gap-1">
+            <button onClick={() => setActiveFolder(f.id)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-colors" style={{ fontFamily: "'IBM Plex Sans', sans-serif", backgroundColor: activeFolder === f.id ? C.gold : "transparent", color: activeFolder === f.id ? C.ink : C.textSecondary, border: `1px solid ${activeFolder === f.id ? C.gold : C.border}` }}>
+              <Folder size={11} /> {f.name}
+            </button>
+            <button onClick={() => onDeleteFolder(f.id)} title="Supprimer le dossier"><X size={10} color={C.textFaint} /></button>
+          </span>
+        ))}
+        <button onClick={onAddFolder} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md" style={{ color: C.textFaint, border: `1px dashed ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          <Folder size={11} /> + dossier
+        </button>
+      </div>
+
+      {allTags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          {allTags.map((t) => (
+            <button key={t} onClick={() => setActiveTag(activeTag === t ? null : t)} className="text-[10px] px-1.5 py-0.5 rounded transition-colors" style={{ fontFamily: "'IBM Plex Mono', monospace", backgroundColor: activeTag === t ? C.gold : "transparent", color: activeTag === t ? C.ink : C.textFaint, border: `1px solid ${activeTag === t ? C.gold : C.border}` }}>#{t}</button>
+          ))}
+        </div>
+      )}
+
+      <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-1 text-[11px] mb-3" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+        <Archive size={12} /> {showArchived ? "Retour aux notes actives" : "Voir les archives"}
+      </button>
+
       {filtered.length === 0 ? (
-        <p className="text-xs" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>Aucune économie ne correspond à ta recherche.</p>
+        <p className="text-xs" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>{showArchived ? "Aucune note archivée." : "Aucune note pour l'instant — crée-en une."}</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filtered.map((e) => <EconomyCard key={e.id} economy={e} onUpdate={onUpdateEconomy} onDelete={() => onDeleteEconomy(e.id)} refOptions={refOptions} onNavigateRef={onNavigateRef} />)}
+          {filtered.map((n) => (<NoteCard key={n.id} note={n} folders={folders} onUpdate={updateNote} onDelete={() => onDeleteNote(n.id)} refOptions={refOptions} onNavigateRef={onNavigateRef} />))}
         </div>
       )}
     </div>
   );
 }
 
-// ================= WATCHLIST =================
 function WatchItemRow({ item, onUpdate, onDelete }) {
   const biasOpts = [{ key: "haussier", label: "Haussier", color: C.hawk }, { key: "baissier", label: "Baissier", color: C.dove }, { key: "neutre", label: "Neutre", color: C.neutral }];
   return (
@@ -908,33 +703,8 @@ function ExportGroup({ title, items, selected, onToggle, onAll }) {
 }
 
 // ================= VUE D'ENSEMBLE =================
-function OverviewSection({ banks, economies, theses, globalThesis, onNavigate }) {
+function OverviewSection({ theses, globalThesis, notebook, onNavigate }) {
   const now = Date.now();
-  const daysUntil = (dateStr) => {
-    if (!dateStr) return null;
-    const d = new Date(dateStr + "T00:00:00");
-    if (isNaN(d.getTime())) return null;
-    return Math.ceil((d.getTime() - now) / 86400000);
-  };
-
-  const tensionBanks = banks.filter((b) => b.bias === "hawkish" && b.marketExpectations?.strength === "forte");
-
-  const upcomingMeetings = banks
-    .flatMap((b) => [
-      { bank: b, date: b.marketExpectations?.nextMeetingDate1 },
-      { bank: b, date: b.marketExpectations?.nextMeetingDate2 },
-    ])
-    .map((m) => ({ ...m, days: daysUntil(m.date) }))
-    .filter((m) => m.days !== null && m.days >= 0)
-    .sort((a, b) => a.days - b.days)
-    .slice(0, 6);
-
-  const upcomingReleases = economies
-    .flatMap((e) => e.categories.flatMap((c) => c.indicators.map((ind) => ({ economy: e, indicator: ind }))))
-    .map((x) => ({ ...x, days: daysUntil(x.indicator.nextRelease) }))
-    .filter((x) => x.days !== null && x.days >= 0)
-    .sort((a, b) => a.days - b.days)
-    .slice(0, 8);
 
   const staleItems = [];
   if (globalThesis.updatedAt) {
@@ -951,6 +721,11 @@ function OverviewSection({ banks, economies, theses, globalThesis, onNavigate })
   });
   staleItems.sort((a, b) => b.days - a.days);
 
+  const pinnedNotes = (notebook?.notes || []).filter((n) => n.pinned && !n.archived);
+  const openTasks = (notebook?.notes || [])
+    .filter((n) => !n.archived)
+    .flatMap((n) => (n.checklist || []).filter((c) => !c.done).map((c) => ({ note: n, task: c })));
+
   const Block = ({ title, children, isEmpty, empty }) => (
     <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
       <p className="text-[11px] uppercase tracking-wide mb-2" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{title}</p>
@@ -960,38 +735,6 @@ function OverviewSection({ banks, economies, theses, globalThesis, onNavigate })
 
   return (
     <div>
-      <Block title="Tension banques centrales" isEmpty={tensionBanks.length === 0} empty="Aucune tension détectée pour l'instant.">
-        <div className="flex flex-col gap-1.5">
-          {tensionBanks.map((b) => (
-            <button key={b.id} onClick={() => onNavigate("banks")} className="text-left text-sm px-2.5 py-1.5 rounded-md transition-colors hover:opacity-90" style={{ backgroundColor: C.stale, color: "#fff", fontFamily: "'IBM Plex Sans', sans-serif" }}>
-              ⚠ {b.code} — hawkish, le marché price des attentes fortes
-            </button>
-          ))}
-        </div>
-      </Block>
-
-      <Block title="Réunions de banques centrales à venir" isEmpty={upcomingMeetings.length === 0} empty="Aucune date de réunion renseignée.">
-        <div className="flex flex-col gap-1.5">
-          {upcomingMeetings.map((m, i) => (
-            <button key={i} onClick={() => onNavigate("banks")} className="flex items-center justify-between text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
-              <span>{m.bank.code}</span>
-              <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint }}>{m.days === 0 ? "aujourd'hui" : `dans ${m.days} j`}</span>
-            </button>
-          ))}
-        </div>
-      </Block>
-
-      <Block title="Publications économiques à venir" isEmpty={upcomingReleases.length === 0} empty="Aucune date de publication renseignée.">
-        <div className="flex flex-col gap-1.5">
-          {upcomingReleases.map((r, i) => (
-            <button key={i} onClick={() => onNavigate("data")} className="flex items-center justify-between text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
-              <span>{r.economy.code} · {r.indicator.name || "Indicateur"}</span>
-              <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint }}>{r.days === 0 ? "aujourd'hui" : `dans ${r.days} j`}</span>
-            </button>
-          ))}
-        </div>
-      </Block>
-
       <Block title={`Thèses pas mises à jour depuis ${FRESHNESS_DAYS}+ j`} isEmpty={staleItems.length === 0} empty="Tout est à jour.">
         <div className="flex flex-col gap-1.5">
           {staleItems.map((s, i) => (
@@ -1002,15 +745,37 @@ function OverviewSection({ banks, economies, theses, globalThesis, onNavigate })
           ))}
         </div>
       </Block>
+
+      <Block title="Notes épinglées" isEmpty={pinnedNotes.length === 0} empty="Aucune note épinglée.">
+        <div className="flex flex-col gap-1.5">
+          {pinnedNotes.map((n) => (
+            <button key={n.id} onClick={() => onNavigate("notebook")} className="text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
+              ★ {n.title || "(sans titre)"}
+            </button>
+          ))}
+        </div>
+      </Block>
+
+      <Block title="Tâches en cours" isEmpty={openTasks.length === 0} empty="Aucune tâche ouverte.">
+        <div className="flex flex-col gap-1.5">
+          {openTasks.slice(0, 10).map((t, i) => (
+            <button key={i} onClick={() => onNavigate("notebook")} className="flex items-center justify-between text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
+              <span>{t.task.text || "(sans titre)"}</span>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint }}>{t.note.title || "note"}</span>
+            </button>
+          ))}
+        </div>
+      </Block>
     </div>
   );
 }
 
-function ExportModal({ selection, setSelection, banks, economies, drivers, theses, trades, autoBackups, onRestoreAutoBackup, onClose }) {
+function ExportModal({ selection, setSelection, drivers, theses, trades, notebook, autoBackups, onRestoreAutoBackup, onClose }) {
   const toggle = (group, id) => setSelection((prev) => ({ ...prev, [group]: { ...prev[group], [id]: !prev[group][id] } }));
   const toggleGlobal = () => setSelection((prev) => ({ ...prev, global: !prev.global }));
   const selectAll = (group, ids, value) => setSelection((prev) => ({ ...prev, [group]: Object.fromEntries(ids.map((id) => [id, value])) }));
   const allInstruments = ASSET_CLASS_DEFS.flatMap((cls) => (theses[cls.id]?.instruments || []).map((inst) => ({ ...inst, clsLabel: cls.label })));
+  const notes = notebook?.notes || [];
 
   return (
     <div className="export-modal fixed inset-0 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.6)", zIndex: 50 }}>
@@ -1025,11 +790,10 @@ function ExportModal({ selection, setSelection, banks, economies, drivers, these
         <label className="flex items-center gap-2 text-sm mb-3" style={{ color: C.textPrimary, fontFamily: "'IBM Plex Sans', sans-serif" }}>
           <input type="checkbox" checked={selection.global} onChange={toggleGlobal} /> Vue d'ensemble globale des marchés
         </label>
-        <ExportGroup title="Banques Centrales" items={banks.map((b) => ({ id: b.id, label: b.code }))} selected={selection.banks} onToggle={(id) => toggle("banks", id)} onAll={(v) => selectAll("banks", banks.map((b) => b.id), v)} />
-        <ExportGroup title="Data Économique" items={economies.map((e) => ({ id: e.id, label: e.code }))} selected={selection.economies} onToggle={(id) => toggle("economies", id)} onAll={(v) => selectAll("economies", economies.map((e) => e.id), v)} />
         <ExportGroup title="Drivers Macro" items={drivers.map((d) => ({ id: d.id, label: d.name || "(sans nom)" }))} selected={selection.drivers} onToggle={(id) => toggle("drivers", id)} onAll={(v) => selectAll("drivers", drivers.map((d) => d.id), v)} />
         <ExportGroup title="Thèse Macro par instrument" items={allInstruments.map((i) => ({ id: i.id, label: `${i.clsLabel} · ${i.symbol || "(sans nom)"}` }))} selected={selection.instruments} onToggle={(id) => toggle("instruments", id)} onAll={(v) => selectAll("instruments", allInstruments.map((i) => i.id), v)} />
         <ExportGroup title="Trades" items={trades.map((t) => ({ id: t.id, label: t.ticker || "(sans nom)" }))} selected={selection.trades} onToggle={(id) => toggle("trades", id)} onAll={(v) => selectAll("trades", trades.map((t) => t.id), v)} />
+        <ExportGroup title="Bloc-Note" items={notes.map((n) => ({ id: n.id, label: n.title || "(sans titre)" }))} selected={selection.notes} onToggle={(id) => toggle("notes", id)} onAll={(v) => selectAll("notes", notes.map((n) => n.id), v)} />
         <button onClick={() => { onClose(); setTimeout(() => window.print(), 200); }} className="w-full mt-3 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: C.gold, color: C.ink, fontFamily: "'IBM Plex Sans', sans-serif" }}>
           Générer l'aperçu d'impression
         </button>
@@ -1052,13 +816,12 @@ function ExportModal({ selection, setSelection, banks, economies, drivers, these
   );
 }
 
-function PrintView({ selection, banks, economies, drivers, globalThesis, theses, trades }) {
+function PrintView({ selection, drivers, globalThesis, theses, trades, notebook }) {
   const allInstruments = ASSET_CLASS_DEFS.flatMap((cls) => (theses[cls.id]?.instruments || []).map((inst) => ({ ...inst, clsLabel: cls.label })));
-  const sBanks = banks.filter((b) => selection.banks[b.id]);
-  const sEcon = economies.filter((e) => selection.economies[e.id]);
   const sDrivers = drivers.filter((d) => selection.drivers[d.id]);
   const sInstr = allInstruments.filter((i) => selection.instruments[i.id]);
   const sTrades = trades.filter((t) => selection.trades[t.id]);
+  const sNotes = (notebook?.notes || []).filter((n) => selection.notes && selection.notes[n.id]);
 
   return (
     <div className="print-view" style={{ backgroundColor: "#fff", color: "#111", padding: "2rem", fontFamily: "Georgia, serif" }}>
@@ -1067,37 +830,6 @@ function PrintView({ selection, banks, economies, drivers, globalThesis, theses,
         <section style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "1.1rem", borderBottom: "1px solid #ccc", paddingBottom: 4 }}>Vue d'ensemble globale</h2>
           <p style={{ whiteSpace: "pre-wrap" }}>{globalThesis.content.text}</p>
-        </section>
-      )}
-      {sBanks.length > 0 && (
-        <section style={{ marginBottom: "1.5rem" }}>
-          <h2 style={{ fontSize: "1.1rem", borderBottom: "1px solid #ccc", paddingBottom: 4 }}>Banques Centrales</h2>
-          {sBanks.map((b) => (
-            <div key={b.id} style={{ marginBottom: 8 }}>
-              <strong>{b.code}</strong> — {b.bias || "non défini"} {b.currentRate ? `· taux actuel : ${b.currentRate}` : ""}
-              {b.marketExpectations && (b.marketExpectations.meeting1 || b.marketExpectations.meeting2 || b.marketExpectations.year2026) && (
-                <p style={{ fontSize: "0.85rem", color: "#555" }}>
-                  Marché — prochaine réunion : {b.marketExpectations.meeting1 || "?"} · suivante : {b.marketExpectations.meeting2 || "?"} · fin 2026 : {b.marketExpectations.year2026 || "?"} {b.marketExpectations.strength ? `(force : ${b.marketExpectations.strength})` : ""}
-                </p>
-              )}
-              {b.members.length > 0 && <ul>{b.members.map((m) => (<li key={m.id}>{m.name} ({m.role}) — {m.vote || "?"} {m.note ? `· ${m.note}` : ""}</li>))}</ul>}
-            </div>
-          ))}
-        </section>
-      )}
-      {sEcon.length > 0 && (
-        <section style={{ marginBottom: "1.5rem" }}>
-          <h2 style={{ fontSize: "1.1rem", borderBottom: "1px solid #ccc", paddingBottom: 4 }}>Data Économique</h2>
-          {sEcon.map((e) => (
-            <div key={e.id} style={{ marginBottom: 8 }}>
-              <strong>{e.code} — {e.name}</strong>
-              {e.categories.map((c) => c.indicators.length > 0 && (
-                <div key={c.id}><em>{c.label}</em>
-                  <ul>{c.indicators.map((ind) => (<li key={ind.id}>{ind.name}: {ind.value} (attendu {ind.expected}) — {ind.surprise || "?"} {(ind.content?.text || ind.note) ? `· ${ind.content?.text || ind.note}` : ""}</li>))}</ul>
-                </div>
-              ))}
-            </div>
-          ))}
         </section>
       )}
       {sDrivers.length > 0 && (
@@ -1135,6 +867,18 @@ function PrintView({ selection, banks, economies, drivers, globalThesis, theses,
           ))}
         </section>
       )}
+      {sNotes.length > 0 && (
+        <section style={{ marginBottom: "1.5rem" }}>
+          <h2 style={{ fontSize: "1.1rem", borderBottom: "1px solid #ccc", paddingBottom: 4 }}>Bloc-Note</h2>
+          {sNotes.map((n) => (
+            <div key={n.id} style={{ marginBottom: 8 }}>
+              <strong>{n.title || "(sans titre)"}</strong> {n.tags?.length > 0 && <span style={{ fontSize: "0.85rem", color: "#555" }}>— {n.tags.map((t) => `#${t}`).join(" ")}</span>}
+              <p style={{ whiteSpace: "pre-wrap" }}>{n.content?.text}</p>
+              {n.checklist?.length > 0 && <ul>{n.checklist.map((c) => (<li key={c.id}>{c.done ? "☑" : "☐"} {c.text}</li>))}</ul>}
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
 }
@@ -1142,8 +886,7 @@ function PrintView({ selection, banks, economies, drivers, globalThesis, theses,
 // ---------- Main App ----------
 function Dashboard({ userEmail, onLogout }) {
   const [activeTab, setActiveTab] = useState("overview");
-  const [banks, setBanks] = useState(SEED_BANKS);
-  const [economies, setEconomies] = useState(SEED_ECONOMIES);
+  const [notebook, setNotebook] = useState({ notes: [], folders: [] });
   const [drivers, setDrivers] = useState([]);
   const [globalThesis, setGlobalThesis] = useState({ content: emptyContent(), updatedAt: null, history: [] });
   const [theses, setTheses] = useState(seedTheses());
@@ -1153,7 +896,7 @@ function Dashboard({ userEmail, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState("idle");
   const [showExport, setShowExport] = useState(false);
-  const [exportSelection, setExportSelection] = useState({ global: false, banks: {}, economies: {}, drivers: {}, instruments: {}, trades: {} });
+  const [exportSelection, setExportSelection] = useState({ global: false, drivers: {}, instruments: {}, trades: {}, notes: {} });
   const [searchQuery, setSearchQuery] = useState("");
   const saveTimeouts = useRef({});
   const fileInputRef = useRef(null);
@@ -1161,9 +904,8 @@ function Dashboard({ userEmail, onLogout }) {
   useEffect(() => {
     (async () => {
       try {
-        const [b, e, d, gt, th, tr, wl, ab] = await Promise.allSettled([
-          storageGet("banks-data"),
-          storageGet("econ-data"),
+        const [nb, d, gt, th, tr, wl, ab] = await Promise.allSettled([
+          storageGet("notebook-data-v1"),
           storageGet("drivers-data"),
           storageGet("global-thesis-data-v2"),
           storageGet("theses-data-v2"),
@@ -1171,15 +913,7 @@ function Dashboard({ userEmail, onLogout }) {
           storageGet("watchlists-data-v1"),
           storageGet("autobackup-index"),
         ]);
-        if (b.status === "fulfilled" && b.value?.value) setBanks(JSON.parse(b.value.value));
-        if (e.status === "fulfilled" && e.value?.value) {
-          let parsedEcon = JSON.parse(e.value.value);
-          if (!parsedEcon.some((ec) => ec.code === "NZ")) {
-            parsedEcon = [...parsedEcon, { id: uid(), code: "NZ", name: "Nouvelle-Zélande", updatedAt: null, categories: ECON_CATEGORIES.map((c) => ({ ...c, indicators: [] })) }];
-            persist("econ-data", parsedEcon);
-          }
-          setEconomies(parsedEcon);
-        }
+        if (nb.status === "fulfilled" && nb.value?.value) setNotebook(JSON.parse(nb.value.value));
         if (d.status === "fulfilled" && d.value?.value) setDrivers(JSON.parse(d.value.value));
         if (gt.status === "fulfilled" && gt.value?.value) {
           const parsed = JSON.parse(gt.value.value);
@@ -1216,7 +950,7 @@ function Dashboard({ userEmail, onLogout }) {
 
   // ---- Sauvegarde automatique périodique (indépendante de persist, silencieuse) ----
   const stateRef = useRef();
-  stateRef.current = { banks, economies, drivers, globalThesis, theses, trades, watchlists };
+  stateRef.current = { notebook, drivers, globalThesis, theses, trades, watchlists };
   const autoBackupsRef = useRef(autoBackups);
   useEffect(() => { autoBackupsRef.current = autoBackups; }, [autoBackups]);
 
@@ -1247,8 +981,7 @@ function Dashboard({ userEmail, onLogout }) {
       const res = await storageGet(`autobackup-slot-${slot}`);
       if (!res?.value) { window.alert("Sauvegarde introuvable."); return; }
       const data = JSON.parse(res.value);
-      if (data.banks) { setBanks(data.banks); persist("banks-data", data.banks); }
-      if (data.economies) { setEconomies(data.economies); persist("econ-data", data.economies); }
+      if (data.notebook) { setNotebook(data.notebook); persist("notebook-data-v1", data.notebook); }
       if (data.drivers) { setDrivers(data.drivers); persist("drivers-data", data.drivers); }
       if (data.globalThesis) { setGlobalThesis(data.globalThesis); persist("global-thesis-data-v2", data.globalThesis); }
       if (data.theses) { setTheses(data.theses); persist("theses-data-v2", data.theses); }
@@ -1260,19 +993,28 @@ function Dashboard({ userEmail, onLogout }) {
     }
   };
 
-  const updateBank = (updatedBank) => { const next = banks.map((b) => (b.id === updatedBank.id ? updatedBank : b)); setBanks(next); persist("banks-data", next); };
-  const updateEconomy = (updatedEconomy) => { const next = economies.map((e) => (e.id === updatedEconomy.id ? updatedEconomy : e)); setEconomies(next); persist("econ-data", next); };
-  const addEconomy = () => {
-    const code = window.prompt("Code de l'économie (ex. BR, IN, MX...) :");
-    if (!code) return;
-    const name = window.prompt("Nom complet (ex. Brésil) :") || code;
-    const next = [...economies, { id: uid(), code: code.toUpperCase(), name, updatedAt: null, categories: ECON_CATEGORIES.map((c) => ({ ...c, indicators: [] })) }];
-    setEconomies(next); persist("econ-data", next);
+  const updateNotebook = (updated) => { setNotebook(updated); persist("notebook-data-v1", updated); };
+  const addNote = () => {
+    const next = { ...notebook, notes: [...(notebook.notes || []), { id: uid(), title: "", content: emptyContent(), tags: [], checklist: [], folderId: null, pinned: false, archived: false, history: [], updatedAt: new Date().toISOString() }] };
+    updateNotebook(next);
   };
-  const deleteEconomy = (id) => {
-    if (!window.confirm("Supprimer cette économie et toutes ses données ?")) return;
-    const next = economies.filter((e) => e.id !== id);
-    setEconomies(next); persist("econ-data", next);
+  const deleteNote = (id) => {
+    if (!window.confirm("Supprimer cette note ?")) return;
+    updateNotebook({ ...notebook, notes: (notebook.notes || []).filter((n) => n.id !== id) });
+  };
+  const addFolder = () => {
+    const name = window.prompt("Nom du dossier :");
+    if (!name) return;
+    updateNotebook({ ...notebook, folders: [...(notebook.folders || []), { id: uid(), name }] });
+  };
+  const deleteFolder = (id) => {
+    if (!window.confirm("Supprimer ce dossier ? Les notes qu'il contient repasseront en \"Sans dossier\".")) return;
+    const next = {
+      ...notebook,
+      folders: (notebook.folders || []).filter((f) => f.id !== id),
+      notes: (notebook.notes || []).map((n) => (n.folderId === id ? { ...n, folderId: null } : n)),
+    };
+    updateNotebook(next);
   };
 
   const addWatchlist = () => {
@@ -1322,7 +1064,7 @@ function Dashboard({ userEmail, onLogout }) {
   const deleteTrade = (id) => { const next = trades.filter((t) => t.id !== id); setTrades(next); persist("trades-data-v2", next); };
 
   const exportBackup = () => {
-    const payload = { banks, economies, drivers, globalThesis, theses, trades, watchlists, exportedAt: new Date().toISOString() };
+    const payload = { notebook, drivers, globalThesis, theses, trades, watchlists, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1337,8 +1079,7 @@ function Dashboard({ userEmail, onLogout }) {
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target.result);
-        if (data.banks) { setBanks(data.banks); persist("banks-data", data.banks); }
-        if (data.economies) { setEconomies(data.economies); persist("econ-data", data.economies); }
+        if (data.notebook) { setNotebook(data.notebook); persist("notebook-data-v1", data.notebook); }
         if (data.drivers) { setDrivers(data.drivers); persist("drivers-data", data.drivers); }
         if (data.globalThesis) { setGlobalThesis(data.globalThesis); persist("global-thesis-data-v2", data.globalThesis); }
         if (data.theses) { setTheses(data.theses); persist("theses-data-v2", data.theses); }
@@ -1353,13 +1094,11 @@ function Dashboard({ userEmail, onLogout }) {
   };
 
   const refOptions = [
-    ...banks.map((b) => ({ id: b.id, type: "bank", label: `BC · ${b.code}` })),
     ...drivers.filter((d) => d.name).map((d) => ({ id: d.id, type: "driver", label: `Driver · ${d.name}` })),
-    ...economies.flatMap((e) => e.categories.flatMap((c) => c.indicators.filter((ind) => ind.name).map((ind) => ({ id: ind.id, type: "data", label: `Data · ${e.code} · ${ind.name}` })))),
     ...ASSET_CLASS_DEFS.flatMap((cls) => (theses[cls.id]?.instruments || []).filter((i) => i.symbol).map((i) => ({ id: i.id, type: "instrument", label: `Thèse · ${cls.label} · ${i.symbol}` }))),
     ...trades.filter((t) => t.ticker).map((t) => ({ id: t.id, type: "trade", label: `Trade · ${t.ticker}` })),
   ];
-  const onNavigateRef = (type) => setActiveTab(type === "bank" ? "banks" : type === "driver" ? "drivers" : type === "instrument" ? "thesis" : type === "trade" ? "trades" : "data");
+  const onNavigateRef = (type) => setActiveTab(type === "driver" ? "drivers" : type === "instrument" ? "thesis" : "trades");
 
   const activeItem = NAV_ITEMS.find((n) => n.id === activeTab);
 
@@ -1367,22 +1106,20 @@ function Dashboard({ userEmail, onLogout }) {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
     const results = [];
-    banks.forEach((b) => { if (b.code.toLowerCase().includes(q) || b.name.toLowerCase().includes(q)) results.push({ tab: "banks", label: `BC · ${b.code}` }); });
-    economies.forEach((e) => { if (e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q)) results.push({ tab: "data", label: `Data · ${e.code}` }); });
     drivers.forEach((d) => { if (d.name && d.name.toLowerCase().includes(q)) results.push({ tab: "drivers", label: `Driver · ${d.name}` }); });
     ASSET_CLASS_DEFS.forEach((cls) => (theses[cls.id]?.instruments || []).forEach((i) => { if (i.symbol && i.symbol.toLowerCase().includes(q)) results.push({ tab: "thesis", label: `Thèse · ${cls.label} · ${i.symbol}` }); }));
     trades.forEach((t) => { if (t.ticker && t.ticker.toLowerCase().includes(q)) results.push({ tab: "trades", label: `Trade · ${t.ticker}` }); });
     watchlists.forEach((w) => w.items.forEach((i) => { if (i.symbol && i.symbol.toLowerCase().includes(q)) results.push({ tab: "watchlist", label: `Watchlist · ${w.name} · ${i.symbol}` }); }));
+    (notebook.notes || []).forEach((n) => { if ((n.title && n.title.toLowerCase().includes(q)) || (n.tags || []).some((t) => t.toLowerCase().includes(q))) results.push({ tab: "notebook", label: `Note · ${n.title || "(sans titre)"}` }); });
     return results.slice(0, 12);
   })();
   const subtitles = {
     overview: "Ce qui mérite ton attention, agrégé automatiquement depuis tout le desk.",
-    banks: "Ton verdict par banque, et le vote de chaque membre selon tes recherches.",
-    data: "Les données par économie, catégorie par catégorie, avec surprises et notes.",
     drivers: "Les forces qui font bouger le marché en ce moment — et laquelle domine.",
     thesis: "Ta lecture macro, par instrument et pour l'ensemble des marchés.",
     trades: "Chaque trade, sa thèse fondamentale, ses raisons et tes attentes.",
     watchlist: "Tes propres listes d'instruments à surveiller, remplies comme tu veux.",
+    notebook: "Tes notes libres — dossiers, tags, checklists, tout ce que tu veux garder sous la main.",
   };
 
   return (
@@ -1462,26 +1199,24 @@ function Dashboard({ userEmail, onLogout }) {
             {loading ? (
               <div className="flex items-center gap-2 mt-10" style={{ color: C.textFaint }}><Loader2 size={16} className="animate-spin" /> chargement...</div>
             ) : activeTab === "overview" ? (
-              <OverviewSection banks={banks} economies={economies} theses={theses} globalThesis={globalThesis} onNavigate={setActiveTab} />
-            ) : activeTab === "banks" ? (
-              <BanksSection banks={banks} onUpdateBank={updateBank} />
-            ) : activeTab === "data" ? (
-              <DataSection economies={economies} onUpdateEconomy={updateEconomy} onAddEconomy={addEconomy} onDeleteEconomy={deleteEconomy} refOptions={refOptions} onNavigateRef={onNavigateRef} />
+              <OverviewSection theses={theses} globalThesis={globalThesis} notebook={notebook} onNavigate={setActiveTab} />
             ) : activeTab === "drivers" ? (
               <DriversSection drivers={drivers} onUpdate={updateDriver} onAdd={addDriver} onDelete={deleteDriver} onSetMain={setMainDriver} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "thesis" ? (
               <ThesisSection globalThesis={globalThesis} onUpdateGlobal={updateGlobalThesis} onSnapshotGlobal={snapshotGlobalThesis} theses={theses} onUpdateInstrument={updateInstrument} onAddInstrument={addInstrument} onDeleteInstrument={deleteInstrument} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "trades" ? (
               <TradesSection trades={trades} onUpdate={updateTrade} onAdd={addTrade} onDelete={deleteTrade} refOptions={refOptions} onNavigateRef={onNavigateRef} />
-            ) : (
+            ) : activeTab === "watchlist" ? (
               <WatchlistSection watchlists={watchlists} onUpdate={updateWatchlist} onAdd={addWatchlist} onDelete={deleteWatchlist} />
+            ) : (
+              <NotebookSection notebook={notebook} onUpdate={updateNotebook} onAddNote={addNote} onDeleteNote={deleteNote} onAddFolder={addFolder} onDeleteFolder={deleteFolder} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             )}
           </div>
         </main>
       </div>
 
-      <PrintView selection={exportSelection} banks={banks} economies={economies} drivers={drivers} globalThesis={globalThesis} theses={theses} trades={trades} />
-      {showExport && <ExportModal selection={exportSelection} setSelection={setExportSelection} banks={banks} economies={economies} drivers={drivers} theses={theses} trades={trades} autoBackups={autoBackups} onRestoreAutoBackup={restoreAutoBackup} onClose={() => setShowExport(false)} />}
+      <PrintView selection={exportSelection} drivers={drivers} globalThesis={globalThesis} theses={theses} trades={trades} notebook={notebook} />
+      {showExport && <ExportModal selection={exportSelection} setSelection={setExportSelection} drivers={drivers} theses={theses} trades={trades} notebook={notebook} autoBackups={autoBackups} onRestoreAutoBackup={restoreAutoBackup} onClose={() => setShowExport(false)} />}
     </div>
   );
 }
