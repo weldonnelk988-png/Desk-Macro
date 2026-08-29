@@ -118,7 +118,27 @@ const ASSET_CLASSES = ASSET_CLASS_DEFS.map((a) => a.label);
 function seedTheses() {
   const obj = {};
   ASSET_CLASS_DEFS.forEach((cls) => {
-    obj[cls.id] = { instruments: cls.seeds.map((s, i) => ({ id: `${cls.id}-${i}`, symbol: s, content: emptyContent(), history: [], archived: false, updatedAt: null })) };
+    obj[cls.id] = {
+      instruments: cls.seeds.map((s, i) => ({
+        id: `${cls.id}-${i}`,
+        symbol: s,
+        content: emptyContent(),
+        history: [],
+        archived: false,
+        direction: null,
+        status: "idee",
+        conviction: null,
+        horizon: null,
+        context: "",
+        argumentsFor: "",
+        argumentsAgainst: "",
+        catalysts: "",
+        risks: "",
+        originalSnapshot: null,
+        createdAt: null,
+        updatedAt: null,
+      })),
+    };
   });
   return obj;
 }
@@ -136,6 +156,18 @@ const HORIZONS = [
 const DIRECTIONS = [
   { key: "long", label: "Long", color: C.hawk },
   { key: "short", label: "Short", color: C.dove },
+];
+const THESIS_STATUSES = [
+  { key: "idee", label: "Idée", color: C.neutral },
+  { key: "active", label: "Active", color: C.gold },
+  { key: "invalidee", label: "Invalidée", color: C.stale },
+  { key: "realisee", label: "Réalisée", color: C.dove },
+];
+const TRADE_RESULTS = [
+  { key: "en_cours", label: "En cours", color: C.neutral },
+  { key: "gagnant", label: "Gagnant", color: C.dove },
+  { key: "perdant", label: "Perdant", color: C.stale },
+  { key: "breakeven", label: "Breakeven", color: C.gold },
 ];
 
 const NAV_ITEMS = [
@@ -157,6 +189,37 @@ function TagButton({ active, color, label, onClick }) {
     >
       {label}
     </button>
+  );
+}
+
+function LabeledTextarea({ label, value, onChange, placeholder, rows = 2 }) {
+  return (
+    <div className="mt-2.5">
+      <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{label}</p>
+      <textarea
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="bg-transparent outline-none w-full text-sm resize-none"
+        style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary, lineHeight: 1.5, border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 8px" }}
+        rows={rows}
+      />
+    </div>
+  );
+}
+
+function LabeledInput({ label, value, onChange, placeholder }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{label}</p>
+      <input
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="bg-transparent outline-none w-full text-sm"
+        style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textPrimary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 8px" }}
+      />
+    </div>
   );
 }
 
@@ -575,9 +638,37 @@ function GlobalThesisCard({ content, updatedAt, history, onUpdate, onSnapshot, o
   );
 }
 
+function OriginalThesisBlock({ snapshot }) {
+  const [open, setOpen] = useState(false);
+  if (!snapshot) return null;
+  const dir = DIRECTIONS.find((d) => d.key === snapshot.direction);
+  const stat = THESIS_STATUSES.find((s) => s.key === snapshot.status);
+  const hor = HORIZONS.find((h) => h.key === snapshot.horizon);
+  return (
+    <div className="mt-3 pt-3" style={{ borderTop: `1px dashed ${C.gold}` }}>
+      <button onClick={() => setOpen(!open)} className="flex items-center gap-1.5 text-[11px]" style={{ color: C.gold, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />} 🔒 Thèse figée le {formatDate(snapshot.frozenAt)}
+      </button>
+      {open && (
+        <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: C.ink, border: `1px solid ${C.border}` }}>
+          <p className="text-xs mb-1.5" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+            {dir?.label || "—"} · {stat?.label || "—"} · Conviction {snapshot.conviction || "—"}/10 · {hor?.label || "—"}
+          </p>
+          {snapshot.context && <p className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}><em>Contexte :</em> {snapshot.context}</p>}
+          {snapshot.thesisText && <p className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}>{snapshot.thesisText}</p>}
+          {snapshot.argumentsFor && <p className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}><em>Pour :</em> {snapshot.argumentsFor}</p>}
+          {snapshot.argumentsAgainst && <p className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}><em>Contre :</em> {snapshot.argumentsAgainst}</p>}
+          {snapshot.catalysts && <p className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}><em>Catalyseurs :</em> {snapshot.catalysts}</p>}
+          {snapshot.risks && <p className="text-xs" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}><em>Risques :</em> {snapshot.risks}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InstrumentRow({ instrument, onUpdate, onDelete, onArchiveToggle, refOptions, onNavigateRef, placeholder }) {
   const [open, setOpen] = useState(false);
-  const touch = (patch) => onUpdate({ ...instrument, ...patch, updatedAt: new Date().toISOString() });
+  const touch = (patch) => onUpdate({ ...instrument, ...patch, ...(!instrument.createdAt ? { createdAt: new Date().toISOString() } : {}), updatedAt: new Date().toISOString() });
   const snapshot = (text) => {
     if (!text || !text.trim()) return;
     const last = instrument.history?.[instrument.history.length - 1]?.text;
@@ -588,12 +679,37 @@ function InstrumentRow({ instrument, onUpdate, onDelete, onArchiveToggle, refOpt
   const updateHistoryEntry = (idx, text) => onUpdate({ ...instrument, history: instrument.history.map((h, i) => (i === idx ? { ...h, text } : h)) });
   const deleteHistoryEntry = (idx) => onUpdate({ ...instrument, history: instrument.history.filter((_, i) => i !== idx) });
 
+  const freeze = () => {
+    if (instrument.originalSnapshot) return;
+    if (!window.confirm("Figer cette thèse maintenant ? Ça enregistre un instantané permanent de ta pensée actuelle — impossible à modifier ensuite.")) return;
+    touch({
+      originalSnapshot: {
+        frozenAt: new Date().toISOString(),
+        direction: instrument.direction || null,
+        status: instrument.status || "idee",
+        conviction: instrument.conviction || null,
+        horizon: instrument.horizon || null,
+        context: instrument.context || "",
+        thesisText: instrument.content?.text || "",
+        argumentsFor: instrument.argumentsFor || "",
+        argumentsAgainst: instrument.argumentsAgainst || "",
+        catalysts: instrument.catalysts || "",
+        risks: instrument.risks || "",
+      },
+    });
+  };
+
+  const dirInfo = DIRECTIONS.find((d) => d.key === instrument.direction);
+
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} className="flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-lg transition-colors hover:opacity-90" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
         <Folder size={14} color={C.textFaint} />
-        <span className="text-sm font-medium flex-1 truncate" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: instrument.archived ? C.textFaint : C.textPrimary }}>{instrument.symbol || "(sans nom)"}</span>
+        <span className="text-sm font-medium truncate" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: instrument.archived ? C.textFaint : C.textPrimary }}>{instrument.symbol || "(sans nom)"}</span>
+        {dirInfo && <span className="text-[10px] uppercase px-1 py-0.5 rounded flex-shrink-0" style={{ fontFamily: "'IBM Plex Mono', monospace", color: dirInfo.color, border: `1px solid ${dirInfo.color}` }}>{dirInfo.label}</span>}
+        {instrument.conviction ? <span className="text-[10px] flex-shrink-0" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{instrument.conviction}/10</span> : null}
         {instrument.archived && <Archive size={12} color={C.textFaint} />}
+        <span className="flex-1" />
         {instrument.updatedAt && <span className="text-[10px] flex-shrink-0" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{formatDate(instrument.updatedAt)}</span>}
       </button>
     );
@@ -617,10 +733,42 @@ function InstrumentRow({ instrument, onUpdate, onDelete, onArchiveToggle, refOpt
           <button onClick={onDelete} className="p-0.5 rounded hover:opacity-70" style={{ color: C.textFaint }}><X size={14} /></button>
         </div>
       </div>
-      <div className="mt-2">
+
+      {instrument.createdAt && <p className="text-[10px] mt-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>Créée le {formatDate(instrument.createdAt)}</p>}
+
+      <div className="flex flex-wrap gap-1.5 mt-2">{DIRECTIONS.map((d) => <TagButton key={d.key} active={instrument.direction === d.key} color={d.color} label={d.label} onClick={() => touch({ direction: instrument.direction === d.key ? null : d.key })} />)}</div>
+      <div className="flex flex-wrap gap-1.5 mt-1.5">{THESIS_STATUSES.map((s) => <TagButton key={s.key} active={instrument.status === s.key} color={s.color} label={s.label} onClick={() => touch({ status: instrument.status === s.key ? null : s.key })} />)}</div>
+      <div className="flex flex-wrap items-center gap-3 mt-1.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>Conviction</span>
+          <input type="number" min="1" max="10" value={instrument.conviction || ""} onChange={(e) => touch({ conviction: e.target.value ? Number(e.target.value) : null })} placeholder="—" className="bg-transparent outline-none text-xs w-12 text-center" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textPrimary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 4px" }} />
+          <span className="text-[11px]" style={{ color: C.textFaint }}>/10</span>
+        </div>
+        <div className="flex gap-1.5">{HORIZONS.map((h) => <TagButton key={h.key} active={instrument.horizon === h.key} color={C.gold} label={h.label} onClick={() => touch({ horizon: instrument.horizon === h.key ? null : h.key })} />)}</div>
+      </div>
+
+      <LabeledTextarea label="Contexte macro" value={instrument.context} onChange={(v) => touch({ context: v })} placeholder="Le contexte macro qui sous-tend l'idée..." rows={2} />
+
+      <div className="mt-2.5">
+        <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>Thèse fondamentale</p>
         <RichContentEditor content={instrument.content} onChange={(c) => touch({ content: c })} onSnapshot={snapshot} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder={placeholder} rows={3} />
       </div>
+
+      <LabeledTextarea label="Arguments en faveur" value={instrument.argumentsFor} onChange={(v) => touch({ argumentsFor: v })} placeholder="Ce qui soutient la thèse..." rows={2} />
+      <LabeledTextarea label="Arguments contre" value={instrument.argumentsAgainst} onChange={(v) => touch({ argumentsAgainst: v })} placeholder="Ce qui pourrait l'invalider..." rows={2} />
+      <LabeledTextarea label="Catalyseurs" value={instrument.catalysts} onChange={(v) => touch({ catalysts: v })} placeholder="Événements à surveiller..." rows={2} />
+      <LabeledTextarea label="Risques / invalidation" value={instrument.risks} onChange={(v) => touch({ risks: v })} placeholder="Ce qui invaliderait la thèse..." rows={2} />
+
       {instrument.updatedAt && <UpdatedBadge updatedAt={instrument.updatedAt} />}
+
+      {instrument.originalSnapshot ? (
+        <OriginalThesisBlock snapshot={instrument.originalSnapshot} />
+      ) : (
+        <button onClick={freeze} className="flex items-center gap-1.5 text-[11px] mt-3 px-2.5 py-1.5 rounded-md" style={{ color: C.gold, border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          🔒 Figer cette thèse
+        </button>
+      )}
+
       <HistoryList history={instrument.history} onUpdateEntry={updateHistoryEntry} onDeleteEntry={deleteHistoryEntry} />
     </div>
   );
@@ -712,13 +860,35 @@ function TradeCard({ trade, onUpdate, onDelete, refOptions, onNavigateRef }) {
       <div className="flex flex-wrap gap-1.5 mt-1.5">{HORIZONS.map((h) => <TagButton key={h.key} active={trade.horizon === h.key} color={C.gold} label={h.label} onClick={() => touch({ horizon: trade.horizon === h.key ? null : h.key })} />)}</div>
 
       <div className="mt-3">
-        <p className="text-[11px] mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>RAISONS DU TRADE</p>
+        <p className="text-[11px] mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>RAISONS DU TRADE (la thèse)</p>
         <RichContentEditor content={trade.reasons} onChange={(c) => touch({ reasons: c })} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Pourquoi ce trade — fondamentaux, driver, catalyseur..." rows={2} />
       </div>
 
       <div className="mt-3">
         <p className="text-[11px] mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>ATTENTES</p>
         <textarea value={trade.expectations} onChange={(e) => touch({ expectations: e.target.value })} placeholder="Ce que tu attends — niveaux, scénario, invalidation..." className="bg-transparent outline-none w-full text-sm resize-none" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary, lineHeight: 1.5 }} rows={2} />
+      </div>
+
+      <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${C.border}` }}>
+        <p className="text-[11px] mb-2" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>EXÉCUTION</p>
+        <div className="grid grid-cols-2 gap-2">
+          <LabeledInput label="Entrée" value={trade.entry} onChange={(v) => touch({ entry: v })} placeholder="Prix d'entrée" />
+          <LabeledInput label="Stop" value={trade.stop} onChange={(v) => touch({ stop: v })} placeholder="Stop loss" />
+          <LabeledInput label="Take Profit" value={trade.takeProfit} onChange={(v) => touch({ takeProfit: v })} placeholder="Objectif" />
+          <LabeledInput label="Taille" value={trade.size} onChange={(v) => touch({ size: v })} placeholder="Taille de position" />
+          <LabeledInput label="Risque %" value={trade.riskPercent} onChange={(v) => touch({ riskPercent: v })} placeholder="Ex. 1%" />
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <p className="text-[11px] mb-1.5" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>RÉSULTAT</p>
+        <div className="flex flex-wrap gap-1.5 mb-1.5">{TRADE_RESULTS.map((r) => <TagButton key={r.key} active={(trade.resultStatus || "en_cours") === r.key} color={r.color} label={r.label} onClick={() => touch({ resultStatus: r.key })} />)}</div>
+        <input value={trade.result} onChange={(e) => touch({ result: e.target.value })} placeholder="Ex. +2.3R, -1R, +450$" className="bg-transparent outline-none text-sm w-full" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textPrimary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 7px" }} />
+      </div>
+
+      <div className="mt-3">
+        <p className="text-[11px] mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>COMMENTAIRE POST-TRADE (ajoute une capture via l'image)</p>
+        <RichContentEditor content={ensureContent(trade.postComment)} onChange={(c) => touch({ postComment: c })} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Thèse bonne, exécution mauvaise ? Débrief..." rows={2} />
       </div>
 
       {trade.updatedAt && <UpdatedBadge updatedAt={trade.updatedAt} />}
@@ -762,28 +932,27 @@ function ExportGroup({ title, items, selected, onToggle, onAll }) {
 }
 
 // ================= VUE D'ENSEMBLE =================
-function OverviewSection({ theses, globalThesis, notebook, onNavigate }) {
-  const now = Date.now();
+function daysAgo(iso) {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
 
-  const staleItems = [];
-  if (globalThesis.updatedAt) {
-    const days = Math.floor((now - new Date(globalThesis.updatedAt).getTime()) / 86400000);
-    if (days > FRESHNESS_DAYS) staleItems.push({ label: "Thèse globale", days });
-  }
-  ASSET_CLASS_DEFS.forEach((cls) => {
-    (theses[cls.id]?.instruments || []).forEach((inst) => {
-      if (inst.updatedAt) {
-        const days = Math.floor((now - new Date(inst.updatedAt).getTime()) / 86400000);
-        if (days > FRESHNESS_DAYS) staleItems.push({ label: `${cls.label} · ${inst.symbol || "sans nom"}`, days });
-      }
-    });
-  });
-  staleItems.sort((a, b) => b.days - a.days);
+function OverviewSection({ theses, trades, onNavigate }) {
+  const allInstruments = ASSET_CLASS_DEFS.flatMap((cls) => (theses[cls.id]?.instruments || []).filter((i) => !i.archived).map((i) => ({ ...i, clsLabel: cls.label })));
 
-  const pinnedNotes = (notebook?.notes || []).filter((n) => n.pinned && !n.archived);
-  const openTasks = (notebook?.notes || [])
-    .filter((n) => !n.archived)
-    .flatMap((n) => (n.checklist || []).filter((c) => !c.done).map((c) => ({ note: n, task: c })));
+  const activeTheses = allInstruments
+    .filter((i) => i.status === "active")
+    .sort((a, b) => (b.conviction || 0) - (a.conviction || 0));
+
+  const latestIdeas = [...allInstruments]
+    .filter((i) => i.createdAt)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 5);
+
+  const toReview = allInstruments
+    .filter((i) => i.updatedAt && daysAgo(i.updatedAt) > FRESHNESS_DAYS)
+    .sort((a, b) => daysAgo(b.updatedAt) - daysAgo(a.updatedAt));
+
+  const openTrades = trades.filter((t) => (t.resultStatus || "en_cours") === "en_cours");
 
   const Block = ({ title, children, isEmpty, empty }) => (
     <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
@@ -794,33 +963,47 @@ function OverviewSection({ theses, globalThesis, notebook, onNavigate }) {
 
   return (
     <div>
-      <Block title={`Thèses pas mises à jour depuis ${FRESHNESS_DAYS}+ j`} isEmpty={staleItems.length === 0} empty="Tout est à jour.">
+      <Block title={`Thèses actives — ${activeTheses.length}`} isEmpty={activeTheses.length === 0} empty="Aucune thèse marquée « Active » pour l'instant.">
         <div className="flex flex-col gap-1.5">
-          {staleItems.map((s, i) => (
-            <button key={i} onClick={() => onNavigate("thesis")} className="flex items-center justify-between text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.stale}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.stale }}>
-              <span>{s.label}</span>
-              <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{s.days} j</span>
+          {activeTheses.map((i) => {
+            const dir = DIRECTIONS.find((d) => d.key === i.direction);
+            return (
+              <button key={i.id} onClick={() => onNavigate("thesis")} className="flex items-center justify-between text-left text-sm px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary }}>
+                <span>{i.symbol || "(sans nom)"} {dir && <span style={{ color: dir.color }}>— {dir.label}</span>}</span>
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint }}>{i.conviction ? `${i.conviction}/10` : "—"}</span>
+              </button>
+            );
+          })}
+        </div>
+      </Block>
+
+      <Block title="Dernières idées" isEmpty={latestIdeas.length === 0} empty="Aucune idée datée pour l'instant.">
+        <div className="flex flex-col gap-1.5">
+          {latestIdeas.map((i) => (
+            <button key={i.id} onClick={() => onNavigate("thesis")} className="flex items-center justify-between text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
+              <span>{i.symbol || "(sans nom)"}</span>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint }}>créée il y a {daysAgo(i.createdAt)} j</span>
             </button>
           ))}
         </div>
       </Block>
 
-      <Block title="Notes épinglées" isEmpty={pinnedNotes.length === 0} empty="Aucune note épinglée.">
+      <Block title="À revoir" isEmpty={toReview.length === 0} empty="Tout est à jour.">
         <div className="flex flex-col gap-1.5">
-          {pinnedNotes.map((n) => (
-            <button key={n.id} onClick={() => onNavigate("notebook")} className="text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
-              ★ {n.title || "(sans titre)"}
+          {toReview.map((i) => (
+            <button key={i.id} onClick={() => onNavigate("thesis")} className="flex items-center justify-between text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.stale}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.stale }}>
+              <span>{i.symbol || "(sans nom)"}</span>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>dernière mise à jour il y a {daysAgo(i.updatedAt)} j</span>
             </button>
           ))}
         </div>
       </Block>
 
-      <Block title="Tâches en cours" isEmpty={openTasks.length === 0} empty="Aucune tâche ouverte.">
+      <Block title={`Trades en cours — ${openTrades.length}`} isEmpty={openTrades.length === 0} empty="Aucun trade en cours.">
         <div className="flex flex-col gap-1.5">
-          {openTasks.slice(0, 10).map((t, i) => (
-            <button key={i} onClick={() => onNavigate("notebook")} className="flex items-center justify-between text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
-              <span>{t.task.text || "(sans titre)"}</span>
-              <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint }}>{t.note.title || "note"}</span>
+          {openTrades.map((t) => (
+            <button key={t.id} onClick={() => onNavigate("trades")} className="text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
+              {t.ticker || "(sans nom)"}
             </button>
           ))}
         </div>
@@ -907,9 +1090,15 @@ function PrintView({ selection, drivers, globalThesis, theses, trades, notebook 
         <section style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "1.1rem", borderBottom: "1px solid #ccc", paddingBottom: 4 }}>Thèse Macro</h2>
           {sInstr.map((i) => (
-            <div key={i.id} style={{ marginBottom: 8 }}>
-              <strong>{i.clsLabel} · {i.symbol}</strong>
+            <div key={i.id} style={{ marginBottom: 12 }}>
+              <strong>{i.clsLabel} · {i.symbol}</strong> — {DIRECTIONS.find((d) => d.key === i.direction)?.label || ""} · {THESIS_STATUSES.find((s) => s.key === i.status)?.label || ""} · Conviction {i.conviction || "—"}/10 · {HORIZONS.find((h) => h.key === i.horizon)?.label || ""}
+              {i.createdAt && <p style={{ fontSize: "0.8rem", color: "#555" }}>Créée le {formatDate(i.createdAt)}</p>}
+              {i.context && <p><em>Contexte :</em> {i.context}</p>}
               <p style={{ whiteSpace: "pre-wrap" }}>{i.content.text}</p>
+              {i.argumentsFor && <p><em>Pour :</em> {i.argumentsFor}</p>}
+              {i.argumentsAgainst && <p><em>Contre :</em> {i.argumentsAgainst}</p>}
+              {i.catalysts && <p><em>Catalyseurs :</em> {i.catalysts}</p>}
+              {i.risks && <p><em>Risques :</em> {i.risks}</p>}
             </div>
           ))}
         </section>
@@ -918,10 +1107,13 @@ function PrintView({ selection, drivers, globalThesis, theses, trades, notebook 
         <section style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "1.1rem", borderBottom: "1px solid #ccc", paddingBottom: 4 }}>Trades</h2>
           {sTrades.map((t) => (
-            <div key={t.id} style={{ marginBottom: 8 }}>
+            <div key={t.id} style={{ marginBottom: 12 }}>
               <strong>{t.ticker}</strong> — {t.direction || ""} · {t.conviction || ""} · {t.horizon || ""}
               <p><em>Raisons :</em> {t.reasons?.text}</p>
               <p><em>Attentes :</em> {t.expectations}</p>
+              <p style={{ fontSize: "0.85rem", color: "#555" }}>Entrée {t.entry || "—"} · Stop {t.stop || "—"} · TP {t.takeProfit || "—"} · Taille {t.size || "—"} · Risque {t.riskPercent || "—"}</p>
+              <p><em>Résultat :</em> {TRADE_RESULTS.find((r) => r.key === t.resultStatus)?.label || ""} {t.result ? `(${t.result})` : ""}</p>
+              {t.postComment?.text && <p><em>Post-trade :</em> {t.postComment.text}</p>}
             </div>
           ))}
         </section>
@@ -1120,7 +1312,33 @@ function Dashboard({ userEmail, onLogout }) {
   const addInstrument = (clsId) => {
     const symbol = window.prompt("Symbole (ex. USD, BTC, AAPL...) :");
     if (!symbol) return;
-    const next = { ...theses, [clsId]: { instruments: [...theses[clsId].instruments, { id: uid(), symbol, content: emptyContent(), history: [], archived: false, updatedAt: null }] } };
+    const next = {
+      ...theses,
+      [clsId]: {
+        instruments: [
+          ...theses[clsId].instruments,
+          {
+            id: uid(),
+            symbol,
+            content: emptyContent(),
+            history: [],
+            archived: false,
+            direction: null,
+            status: "idee",
+            conviction: null,
+            horizon: null,
+            context: "",
+            argumentsFor: "",
+            argumentsAgainst: "",
+            catalysts: "",
+            risks: "",
+            originalSnapshot: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: null,
+          },
+        ],
+      },
+    };
     setTheses(next); persist("theses-data-v2", next);
   };
   const deleteInstrument = (clsId, instId) => {
@@ -1128,7 +1346,31 @@ function Dashboard({ userEmail, onLogout }) {
     setTheses(next); persist("theses-data-v2", next);
   };
 
-  const addTrade = () => { const next = [...trades, { id: uid(), ticker: "", assetClass: "", direction: null, conviction: null, horizon: null, reasons: emptyContent(), expectations: "", updatedAt: new Date().toISOString() }]; setTrades(next); persist("trades-data-v2", next); };
+  const addTrade = () => {
+    const next = [
+      ...trades,
+      {
+        id: uid(),
+        ticker: "",
+        assetClass: "",
+        direction: null,
+        conviction: null,
+        horizon: null,
+        reasons: emptyContent(),
+        expectations: "",
+        entry: "",
+        stop: "",
+        takeProfit: "",
+        size: "",
+        riskPercent: "",
+        resultStatus: "en_cours",
+        result: "",
+        postComment: emptyContent(),
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+    setTrades(next); persist("trades-data-v2", next);
+  };
   const updateTrade = (updated) => { const next = trades.map((t) => (t.id === updated.id ? updated : t)); setTrades(next); persist("trades-data-v2", next); };
   const deleteTrade = (id) => { const next = trades.filter((t) => t.id !== id); setTrades(next); persist("trades-data-v2", next); };
 
@@ -1268,7 +1510,7 @@ function Dashboard({ userEmail, onLogout }) {
             {loading ? (
               <div className="flex items-center gap-2 mt-10" style={{ color: C.textFaint }}><Loader2 size={16} className="animate-spin" /> chargement...</div>
             ) : activeTab === "overview" ? (
-              <OverviewSection theses={theses} globalThesis={globalThesis} notebook={notebook} onNavigate={setActiveTab} />
+              <OverviewSection theses={theses} trades={trades} onNavigate={setActiveTab} />
             ) : activeTab === "drivers" ? (
               <DriversSection drivers={drivers} onUpdate={updateDriver} onAdd={addDriver} onDelete={deleteDriver} onSetMain={setMainDriver} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "thesis" ? (
