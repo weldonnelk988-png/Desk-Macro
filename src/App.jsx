@@ -666,7 +666,7 @@ function OriginalThesisBlock({ snapshot }) {
   );
 }
 
-function InstrumentRow({ instrument, onUpdate, onDelete, onArchiveToggle, refOptions, onNavigateRef, placeholder }) {
+function InstrumentRow({ instrument, onUpdate, onDelete, onArchiveToggle, onOpenReading, refOptions, onNavigateRef, placeholder }) {
   const [open, setOpen] = useState(false);
   const touch = (patch) => onUpdate({ ...instrument, ...patch, ...(!instrument.createdAt ? { createdAt: new Date().toISOString() } : {}), updatedAt: new Date().toISOString() });
   const snapshot = (text) => {
@@ -729,6 +729,7 @@ function InstrumentRow({ instrument, onUpdate, onDelete, onArchiveToggle, refOpt
             className="bg-transparent outline-none text-[11px]"
             style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint, border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 5px" }}
           />
+          <button onClick={onOpenReading} title="Mode lecture" style={{ color: C.gold }}><Eye size={14} /></button>
           <button onClick={onArchiveToggle} title={instrument.archived ? "Désarchiver" : "Archiver"} style={{ color: instrument.archived ? C.gold : C.textFaint }}><Archive size={14} /></button>
           <button onClick={onDelete} className="p-0.5 rounded hover:opacity-70" style={{ color: C.textFaint }}><X size={14} /></button>
         </div>
@@ -774,7 +775,7 @@ function InstrumentRow({ instrument, onUpdate, onDelete, onArchiveToggle, refOpt
   );
 }
 
-function AssetClassBlock({ cls, data, onUpdateInstrument, onAdd, onDelete, refOptions, onNavigateRef }) {
+function AssetClassBlock({ cls, data, onUpdateInstrument, onAdd, onDelete, onOpenReading, refOptions, onNavigateRef }) {
   const [open, setOpen] = useState(cls.id === "forex");
   const [showArchived, setShowArchived] = useState(false);
   const instruments = data?.instruments || [];
@@ -796,6 +797,7 @@ function AssetClassBlock({ cls, data, onUpdateInstrument, onAdd, onDelete, refOp
               onUpdate={(u) => onUpdateInstrument(inst.id, u)}
               onDelete={() => onDelete(inst.id)}
               onArchiveToggle={() => onUpdateInstrument(inst.id, { ...inst, archived: !inst.archived, updatedAt: new Date().toISOString() })}
+              onOpenReading={() => onOpenReading(cls.id, inst.id)}
               refOptions={refOptions}
               onNavigateRef={onNavigateRef}
               placeholder={`Ta thèse et ton biais sur ${inst.symbol || "cet instrument"}...`}
@@ -818,7 +820,7 @@ function AssetClassBlock({ cls, data, onUpdateInstrument, onAdd, onDelete, refOp
   );
 }
 
-function ThesisSection({ globalThesis, onUpdateGlobal, onSnapshotGlobal, onUpdateGlobalHistoryEntry, onDeleteGlobalHistoryEntry, theses, onUpdateInstrument, onAddInstrument, onDeleteInstrument, refOptions, onNavigateRef }) {
+function ThesisSection({ globalThesis, onUpdateGlobal, onSnapshotGlobal, onUpdateGlobalHistoryEntry, onDeleteGlobalHistoryEntry, theses, onUpdateInstrument, onAddInstrument, onDeleteInstrument, onOpenReading, refOptions, onNavigateRef }) {
   return (
     <div>
       <GlobalThesisCard content={globalThesis.content} updatedAt={globalThesis.updatedAt} history={globalThesis.history} onUpdate={onUpdateGlobal} onSnapshot={onSnapshotGlobal} onUpdateHistoryEntry={onUpdateGlobalHistoryEntry} onDeleteHistoryEntry={onDeleteGlobalHistoryEntry} refOptions={refOptions} onNavigateRef={onNavigateRef} />
@@ -830,6 +832,7 @@ function ThesisSection({ globalThesis, onUpdateGlobal, onSnapshotGlobal, onUpdat
           onUpdateInstrument={(instId, u) => onUpdateInstrument(cls.id, instId, u)}
           onAdd={() => onAddInstrument(cls.id)}
           onDelete={(instId) => onDeleteInstrument(cls.id, instId)}
+          onOpenReading={onOpenReading}
           refOptions={refOptions}
           onNavigateRef={onNavigateRef}
         />
@@ -1012,7 +1015,7 @@ function OverviewSection({ theses, trades, onNavigate }) {
   );
 }
 
-function ExportModal({ selection, setSelection, drivers, theses, trades, notebook, autoBackups, onRestoreAutoBackup, onClose }) {
+function ExportModal({ selection, setSelection, drivers, theses, trades, notebook, autoBackups, onRestoreAutoBackup, setPrintMode, onClose }) {
   const toggle = (group, id) => setSelection((prev) => ({ ...prev, [group]: { ...prev[group], [id]: !prev[group][id] } }));
   const toggleGlobal = () => setSelection((prev) => ({ ...prev, global: !prev.global }));
   const selectAll = (group, ids, value) => setSelection((prev) => ({ ...prev, [group]: Object.fromEntries(ids.map((id) => [id, value])) }));
@@ -1036,7 +1039,7 @@ function ExportModal({ selection, setSelection, drivers, theses, trades, noteboo
         <ExportGroup title="Thèse Macro par instrument" items={allInstruments.map((i) => ({ id: i.id, label: `${i.clsLabel} · ${i.symbol || "(sans nom)"}` }))} selected={selection.instruments} onToggle={(id) => toggle("instruments", id)} onAll={(v) => selectAll("instruments", allInstruments.map((i) => i.id), v)} />
         <ExportGroup title="Trades" items={trades.map((t) => ({ id: t.id, label: t.ticker || "(sans nom)" }))} selected={selection.trades} onToggle={(id) => toggle("trades", id)} onAll={(v) => selectAll("trades", trades.map((t) => t.id), v)} />
         <ExportGroup title="Bloc-Note" items={notes.map((n) => ({ id: n.id, label: n.title || "(sans titre)" }))} selected={selection.notes} onToggle={(id) => toggle("notes", id)} onAll={(v) => selectAll("notes", notes.map((n) => n.id), v)} />
-        <button onClick={() => { onClose(); setTimeout(() => window.print(), 200); }} className="w-full mt-3 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: C.gold, color: C.ink, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+        <button onClick={() => { setPrintMode("export"); onClose(); setTimeout(() => window.print(), 200); }} className="w-full mt-3 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: C.gold, color: C.ink, fontFamily: "'IBM Plex Sans', sans-serif" }}>
           Générer l'aperçu d'impression
         </button>
 
@@ -1134,6 +1137,107 @@ function PrintView({ selection, drivers, globalThesis, theses, trades, notebook 
   );
 }
 
+// ================= MODE LECTURE =================
+function flattenInstruments(theses) {
+  return ASSET_CLASS_DEFS.flatMap((cls) => (theses[cls.id]?.instruments || []).filter((i) => !i.archived).map((i) => ({ ...i, clsId: cls.id, clsLabel: cls.label })));
+}
+
+function ThesisReadingBody({ inst, dark }) {
+  const dir = DIRECTIONS.find((d) => d.key === inst.direction);
+  const stat = THESIS_STATUSES.find((s) => s.key === inst.status);
+  const hor = HORIZONS.find((h) => h.key === inst.horizon);
+  const fg = dark ? C.textPrimary : "#111";
+  const fgSoft = dark ? C.textSecondary : "#333";
+  const fgFaint = dark ? C.textFaint : "#666";
+  const Section = ({ title, text }) =>
+    text ? (
+      <div style={{ marginBottom: "1.25rem" }}>
+        <p style={{ fontSize: "0.7rem", letterSpacing: "0.05em", textTransform: "uppercase", color: fgFaint, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 4 }}>{title}</p>
+        <p style={{ whiteSpace: "pre-wrap", color: fgSoft, fontFamily: "'IBM Plex Sans', sans-serif", lineHeight: 1.7 }}>{text}</p>
+      </div>
+    ) : null;
+
+  return (
+    <div>
+      <p style={{ fontSize: "0.8rem", color: fgFaint, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 4 }}>{inst.clsLabel}</p>
+      <h1 style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: "2rem", color: fg, marginBottom: 4 }}>
+        {inst.symbol || "(sans nom)"}{dir ? ` — Scénario ${dir.key === "long" ? "haussier" : "baissier"}` : ""}
+      </h1>
+      <p style={{ fontSize: "0.8rem", color: fgFaint, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 24 }}>
+        {inst.createdAt && <>Créée le {formatDate(inst.createdAt)} — </>}
+        {inst.updatedAt && <>Dernière modification {formatDate(inst.updatedAt)}</>}
+        <br />
+        {hor && <>Horizon : {hor.label} — </>}
+        {inst.conviction ? <>Conviction : {inst.conviction}/10</> : null}
+        {stat && <> — Statut : {stat.label}</>}
+      </p>
+
+      <Section title="Contexte" text={inst.context} />
+      <Section title="Ma thèse" text={inst.content?.text} />
+      <Section title="Arguments en faveur" text={inst.argumentsFor} />
+      <Section title="Arguments contre" text={inst.argumentsAgainst} />
+      <Section title="Catalyseurs" text={inst.catalysts} />
+      <Section title="Risques d'invalidation" text={inst.risks} />
+
+      {!inst.context && !inst.content?.text && !inst.argumentsFor && !inst.argumentsAgainst && !inst.catalysts && !inst.risks && (
+        <p style={{ color: fgFaint, fontFamily: "'IBM Plex Sans', sans-serif", fontStyle: "italic" }}>Cette thèse est encore vide.</p>
+      )}
+    </div>
+  );
+}
+
+function ReadingView({ readingMode, theses, onClose, onNavigate, onPrint }) {
+  if (!readingMode) return null;
+  const list = flattenInstruments(theses);
+  const idx = list.findIndex((i) => i.clsId === readingMode.clsId && i.id === readingMode.instId);
+  const inst = list[idx];
+  if (!inst) return null;
+
+  return (
+    <div className="no-print fixed inset-0 flex flex-col" style={{ backgroundColor: C.ink, zIndex: 60 }}>
+      <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
+        <span className="flex items-center gap-1.5 text-xs" style={{ color: C.gold, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          <Eye size={13} /> Mode lecture
+        </span>
+        <div className="flex items-center gap-3">
+          <button onClick={onPrint} className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md" style={{ color: C.gold, border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+            <Download size={12} /> Export PDF
+          </button>
+          <button onClick={onClose} style={{ color: C.textFaint }}><X size={18} /></button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-6 py-10 flex justify-center">
+        <div className="w-full max-w-xl">
+          <ThesisReadingBody inst={inst} dark />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: `1px solid ${C.border}` }}>
+        <button onClick={() => idx > 0 && onNavigate(list[idx - 1].clsId, list[idx - 1].id)} disabled={idx <= 0} className="text-xs" style={{ color: idx > 0 ? C.textPrimary : C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          ← Précédent
+        </button>
+        <span className="text-[11px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{idx + 1} / {list.length}</span>
+        <button onClick={() => idx < list.length - 1 && onNavigate(list[idx + 1].clsId, list[idx + 1].id)} disabled={idx >= list.length - 1} className="text-xs" style={{ color: idx < list.length - 1 ? C.textPrimary : C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          Suivant →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReadingPrintView({ readingMode, theses }) {
+  if (!readingMode) return null;
+  const list = flattenInstruments(theses);
+  const inst = list.find((i) => i.clsId === readingMode.clsId && i.id === readingMode.instId);
+  if (!inst) return null;
+  return (
+    <div className="print-view" style={{ backgroundColor: "#fff", padding: "2.5rem", fontFamily: "Georgia, serif" }}>
+      <ThesisReadingBody inst={inst} />
+    </div>
+  );
+}
+
 // ---------- Main App ----------
 function Dashboard({ userEmail, onLogout }) {
   const [activeTab, setActiveTab] = useState("overview");
@@ -1148,6 +1252,8 @@ function Dashboard({ userEmail, onLogout }) {
   const [saveState, setSaveState] = useState("idle");
   const [showExport, setShowExport] = useState(false);
   const [exportSelection, setExportSelection] = useState({ global: false, drivers: {}, instruments: {}, trades: {}, notes: {} });
+  const [readingMode, setReadingMode] = useState(null);
+  const [printMode, setPrintMode] = useState("export");
   const [searchQuery, setSearchQuery] = useState("");
   const saveTimeouts = useRef({});
   const fileInputRef = useRef(null);
@@ -1411,6 +1517,10 @@ function Dashboard({ userEmail, onLogout }) {
   ];
   const onNavigateRef = (type) => setActiveTab(type === "driver" ? "drivers" : type === "instrument" ? "thesis" : "trades");
 
+  const openReading = (clsId, instId) => setReadingMode({ clsId, instId });
+  const closeReading = () => setReadingMode(null);
+  const printReading = () => { setPrintMode("reading"); setTimeout(() => window.print(), 150); };
+
   const activeItem = NAV_ITEMS.find((n) => n.id === activeTab);
 
   const searchResults = (() => {
@@ -1482,7 +1592,7 @@ function Dashboard({ userEmail, onLogout }) {
             })}
           </nav>
 
-          <button onClick={() => setShowExport(true)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm mt-3" style={{ color: C.textSecondary, border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          <button onClick={() => { setPrintMode("export"); setShowExport(true); }} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm mt-3" style={{ color: C.textSecondary, border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
             <Download size={15} strokeWidth={1.75} /> Exporter en PDF
           </button>
 
@@ -1514,7 +1624,7 @@ function Dashboard({ userEmail, onLogout }) {
             ) : activeTab === "drivers" ? (
               <DriversSection drivers={drivers} onUpdate={updateDriver} onAdd={addDriver} onDelete={deleteDriver} onSetMain={setMainDriver} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "thesis" ? (
-              <ThesisSection globalThesis={globalThesis} onUpdateGlobal={updateGlobalThesis} onSnapshotGlobal={snapshotGlobalThesis} onUpdateGlobalHistoryEntry={updateGlobalThesisHistoryEntry} onDeleteGlobalHistoryEntry={deleteGlobalThesisHistoryEntry} theses={theses} onUpdateInstrument={updateInstrument} onAddInstrument={addInstrument} onDeleteInstrument={deleteInstrument} refOptions={refOptions} onNavigateRef={onNavigateRef} />
+              <ThesisSection globalThesis={globalThesis} onUpdateGlobal={updateGlobalThesis} onSnapshotGlobal={snapshotGlobalThesis} onUpdateGlobalHistoryEntry={updateGlobalThesisHistoryEntry} onDeleteGlobalHistoryEntry={deleteGlobalThesisHistoryEntry} theses={theses} onUpdateInstrument={updateInstrument} onAddInstrument={addInstrument} onDeleteInstrument={deleteInstrument} onOpenReading={openReading} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "trades" ? (
               <TradesSection trades={trades} onUpdate={updateTrade} onAdd={addTrade} onDelete={deleteTrade} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "watchlist" ? (
@@ -1526,8 +1636,10 @@ function Dashboard({ userEmail, onLogout }) {
         </main>
       </div>
 
-      <PrintView selection={exportSelection} drivers={drivers} globalThesis={globalThesis} theses={theses} trades={trades} notebook={notebook} />
-      {showExport && <ExportModal selection={exportSelection} setSelection={setExportSelection} drivers={drivers} theses={theses} trades={trades} notebook={notebook} autoBackups={autoBackups} onRestoreAutoBackup={restoreAutoBackup} onClose={() => setShowExport(false)} />}
+      {printMode === "export" && <PrintView selection={exportSelection} drivers={drivers} globalThesis={globalThesis} theses={theses} trades={trades} notebook={notebook} />}
+      {showExport && <ExportModal selection={exportSelection} setSelection={setExportSelection} drivers={drivers} theses={theses} trades={trades} notebook={notebook} autoBackups={autoBackups} onRestoreAutoBackup={restoreAutoBackup} setPrintMode={setPrintMode} onClose={() => setShowExport(false)} />}
+      <ReadingView readingMode={readingMode} theses={theses} onClose={closeReading} onNavigate={openReading} onPrint={printReading} />
+      {printMode === "reading" && <ReadingPrintView readingMode={readingMode} theses={theses} />}
     </div>
   );
 }
