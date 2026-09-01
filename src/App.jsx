@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Compass, ScrollText, Target, Plus, X, ChevronDown, ChevronRight, Loader2, Star, Globe2, Download, Link2, Image as ImageIcon, Search, LogOut, Eye, AlertTriangle, StickyNote, Folder, Archive } from "lucide-react";
+import { Compass, ScrollText, Target, Plus, X, ChevronDown, ChevronRight, Loader2, Star, Globe2, Download, Link2, Image as ImageIcon, Search, LogOut, Eye, AlertTriangle, StickyNote, Folder, Archive, Trash2, RotateCcw, Maximize2 } from "lucide-react";
 import { storageGet, storageSet } from "./storage";
 import { auth } from "./firebase";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
@@ -192,17 +192,72 @@ function TagButton({ active, color, label, onClick }) {
   );
 }
 
+function AutoTextarea({ value, onChange, onBlur, placeholder, rows = 4, minFontSize = "0.875rem", style }) {
+  const ref = useRef(null);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const resize = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  };
+  useEffect(() => { resize(); }, [value]);
+
+  return (
+    <div className="relative group">
+      <textarea
+        ref={ref}
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        rows={rows}
+        className="bg-transparent outline-none w-full resize-none pr-6"
+        style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary, lineHeight: 1.6, fontSize: minFontSize, overflow: "hidden", ...style }}
+      />
+      <button
+        type="button"
+        onClick={() => setFullscreen(true)}
+        title="Agrandir en plein écran"
+        className="absolute top-0 right-0 opacity-40 hover:opacity-100"
+        style={{ color: C.textFaint }}
+      >
+        <Maximize2 size={12} />
+      </button>
+
+      {fullscreen && (
+        <div className="no-print fixed inset-0 flex flex-col" style={{ backgroundColor: C.ink, zIndex: 70 }}>
+          <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
+            <span className="text-xs" style={{ color: C.gold, fontFamily: "'IBM Plex Sans', sans-serif" }}>Édition — plein écran</span>
+            <button onClick={() => { setFullscreen(false); onBlur && onBlur(); }} style={{ color: C.textFaint }}><X size={18} /></button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-6 py-6 flex justify-center">
+            <textarea
+              autoFocus
+              value={value || ""}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder={placeholder}
+              className="bg-transparent outline-none w-full max-w-2xl resize-none"
+              style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary, fontSize: "1rem", lineHeight: 1.8, minHeight: "70vh" }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LabeledTextarea({ label, value, onChange, placeholder, rows = 2 }) {
   return (
     <div className="mt-2.5">
       <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{label}</p>
-      <textarea
-        value={value || ""}
-        onChange={(e) => onChange(e.target.value)}
+      <AutoTextarea
+        value={value}
+        onChange={onChange}
         placeholder={placeholder}
-        className="bg-transparent outline-none w-full text-sm resize-none"
-        style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary, lineHeight: 1.5, border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 8px" }}
         rows={rows}
+        style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 8px" }}
       />
     </div>
   );
@@ -261,13 +316,11 @@ function RichContentEditor({ content, onChange, refOptions, onNavigateRef, place
 
   return (
     <div>
-      <textarea
+      <AutoTextarea
         value={content.text}
-        onChange={(e) => onChange({ ...content, text: e.target.value })}
+        onChange={(text) => onChange({ ...content, text })}
         onBlur={() => onSnapshot && onSnapshot(content.text)}
         placeholder={placeholder}
-        className="bg-transparent outline-none w-full text-sm resize-none"
-        style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary, lineHeight: 1.6 }}
         rows={rows}
       />
 
@@ -581,7 +634,7 @@ function AssetChip({ label, active, onClick }) {
   );
 }
 
-function DriverCard({ driver, onUpdate, onDelete, onSetMain, refOptions, onNavigateRef }) {
+function DriverCard({ driver, onUpdate, onDelete, onSetMain, onOpenReading, refOptions, onNavigateRef }) {
   const toggleAsset = (asset) => { const has = driver.assetClasses.includes(asset); onUpdate({ ...driver, assetClasses: has ? driver.assetClasses.filter((a) => a !== asset) : [...driver.assetClasses, asset] }); };
   const content = ensureContent(driver.content || { text: driver.description || "" });
   const snapshot = (text) => {
@@ -598,6 +651,7 @@ function DriverCard({ driver, onUpdate, onDelete, onSetMain, refOptions, onNavig
           <Star size={16} fill={driver.isMain ? C.gold : "none"} color={driver.isMain ? C.gold : C.textFaint} strokeWidth={1.5} />
         </button>
         <input value={driver.name} onChange={(e) => onUpdate({ ...driver, name: e.target.value })} placeholder="Nom du driver (ex. Désinflation US...)" className="bg-transparent outline-none flex-1 text-base font-medium" style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: C.textPrimary }} />
+        <button onClick={onOpenReading} title="Mode lecture" className="flex-shrink-0" style={{ color: C.gold }}><Eye size={14} /></button>
         <button onClick={onDelete} className="p-0.5 rounded hover:opacity-70 flex-shrink-0" style={{ color: C.textFaint }}><X size={14} /></button>
       </div>
       {driver.isMain && <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ml-6 inline-block mt-1" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.gold, border: `1px solid ${C.gold}` }}>Driver principal</span>}
@@ -611,23 +665,24 @@ function DriverCard({ driver, onUpdate, onDelete, onSetMain, refOptions, onNavig
   );
 }
 
-function DriversSection({ drivers, onUpdate, onAdd, onDelete, onSetMain, refOptions, onNavigateRef }) {
+function DriversSection({ drivers, onUpdate, onAdd, onDelete, onSetMain, onOpenReading, refOptions, onNavigateRef }) {
   const sorted = [...drivers].sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
   return (
     <div>
-      <div className="flex flex-col gap-3">{sorted.map((d) => (<DriverCard key={d.id} driver={d} onUpdate={(u) => onUpdate(d.id, u)} onDelete={() => onDelete(d.id)} onSetMain={() => onSetMain(d.id)} refOptions={refOptions} onNavigateRef={onNavigateRef} />))}</div>
+      <div className="flex flex-col gap-3">{sorted.map((d) => (<DriverCard key={d.id} driver={d} onUpdate={(u) => onUpdate(d.id, u)} onDelete={() => onDelete(d.id)} onSetMain={() => onSetMain(d.id)} onOpenReading={() => onOpenReading(d.id)} refOptions={refOptions} onNavigateRef={onNavigateRef} />))}</div>
       <button onClick={onAdd} className="flex items-center gap-1.5 text-sm mt-3 px-3 py-2 rounded-lg w-full justify-center" style={{ color: C.textSecondary, border: `1px dashed ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}><Plus size={14} /> Ajouter un driver</button>
     </div>
   );
 }
 
 // ================= THÈSE MACRO =================
-function GlobalThesisCard({ content, updatedAt, history, onUpdate, onSnapshot, onUpdateHistoryEntry, onDeleteHistoryEntry, refOptions, onNavigateRef }) {
+function GlobalThesisCard({ content, updatedAt, history, onUpdate, onSnapshot, onUpdateHistoryEntry, onDeleteHistoryEntry, onOpenReading, refOptions, onNavigateRef }) {
   return (
     <div className="rounded-xl p-4 mb-5" style={{ backgroundColor: C.surfaceRaised, border: `1px solid ${C.gold}` }}>
       <div className="flex items-center gap-2">
         <Globe2 size={16} color={C.gold} strokeWidth={1.75} />
         <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: C.textPrimary, fontSize: "1.05rem" }}>Vue d'ensemble globale des marchés</h3>
+        <button onClick={onOpenReading} title="Mode lecture" className="ml-auto flex-shrink-0" style={{ color: C.gold }}><Eye size={14} /></button>
       </div>
       <div className="mt-2">
         <RichContentEditor content={content} onChange={onUpdate} onSnapshot={onSnapshot} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Ta lecture d'ensemble : cycle, régime de marché, comment tout se connecte..." rows={5} />
@@ -748,6 +803,8 @@ function InstrumentRow({ instrument, onUpdate, onDelete, onArchiveToggle, onOpen
         <div className="flex gap-1.5">{HORIZONS.map((h) => <TagButton key={h.key} active={instrument.horizon === h.key} color={C.gold} label={h.label} onClick={() => touch({ horizon: instrument.horizon === h.key ? null : h.key })} />)}</div>
       </div>
 
+      <TagEditor tags={instrument.tags} onChange={(tags) => touch({ tags })} />
+
       <LabeledTextarea label="Contexte macro" value={instrument.context} onChange={(v) => touch({ context: v })} placeholder="Le contexte macro qui sous-tend l'idée..." rows={2} />
 
       <div className="mt-2.5">
@@ -820,10 +877,10 @@ function AssetClassBlock({ cls, data, onUpdateInstrument, onAdd, onDelete, onOpe
   );
 }
 
-function ThesisSection({ globalThesis, onUpdateGlobal, onSnapshotGlobal, onUpdateGlobalHistoryEntry, onDeleteGlobalHistoryEntry, theses, onUpdateInstrument, onAddInstrument, onDeleteInstrument, onOpenReading, refOptions, onNavigateRef }) {
+function ThesisSection({ globalThesis, onUpdateGlobal, onSnapshotGlobal, onUpdateGlobalHistoryEntry, onDeleteGlobalHistoryEntry, theses, onUpdateInstrument, onAddInstrument, onDeleteInstrument, onOpenInstrumentReading, onOpenGlobalReading, refOptions, onNavigateRef }) {
   return (
     <div>
-      <GlobalThesisCard content={globalThesis.content} updatedAt={globalThesis.updatedAt} history={globalThesis.history} onUpdate={onUpdateGlobal} onSnapshot={onSnapshotGlobal} onUpdateHistoryEntry={onUpdateGlobalHistoryEntry} onDeleteHistoryEntry={onDeleteGlobalHistoryEntry} refOptions={refOptions} onNavigateRef={onNavigateRef} />
+      <GlobalThesisCard content={globalThesis.content} updatedAt={globalThesis.updatedAt} history={globalThesis.history} onUpdate={onUpdateGlobal} onSnapshot={onSnapshotGlobal} onUpdateHistoryEntry={onUpdateGlobalHistoryEntry} onDeleteHistoryEntry={onDeleteGlobalHistoryEntry} onOpenReading={onOpenGlobalReading} refOptions={refOptions} onNavigateRef={onNavigateRef} />
       {ASSET_CLASS_DEFS.map((cls) => (
         <AssetClassBlock
           key={cls.id}
@@ -832,7 +889,7 @@ function ThesisSection({ globalThesis, onUpdateGlobal, onSnapshotGlobal, onUpdat
           onUpdateInstrument={(instId, u) => onUpdateInstrument(cls.id, instId, u)}
           onAdd={() => onAddInstrument(cls.id)}
           onDelete={(instId) => onDeleteInstrument(cls.id, instId)}
-          onOpenReading={onOpenReading}
+          onOpenReading={onOpenInstrumentReading}
           refOptions={refOptions}
           onNavigateRef={onNavigateRef}
         />
@@ -862,6 +919,8 @@ function TradeCard({ trade, onUpdate, onDelete, refOptions, onNavigateRef }) {
       <div className="flex flex-wrap gap-1.5 mt-1.5">{CONVICTIONS.map((c) => <TagButton key={c.key} active={trade.conviction === c.key} color={c.color} label={`Conviction ${c.label.toLowerCase()}`} onClick={() => touch({ conviction: trade.conviction === c.key ? null : c.key })} />)}</div>
       <div className="flex flex-wrap gap-1.5 mt-1.5">{HORIZONS.map((h) => <TagButton key={h.key} active={trade.horizon === h.key} color={C.gold} label={h.label} onClick={() => touch({ horizon: trade.horizon === h.key ? null : h.key })} />)}</div>
 
+      <TagEditor tags={trade.tags} onChange={(tags) => touch({ tags })} />
+
       <div className="mt-3">
         <p className="text-[11px] mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>RAISONS DU TRADE (la thèse)</p>
         <RichContentEditor content={trade.reasons} onChange={(c) => touch({ reasons: c })} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Pourquoi ce trade — fondamentaux, driver, catalyseur..." rows={2} />
@@ -869,7 +928,7 @@ function TradeCard({ trade, onUpdate, onDelete, refOptions, onNavigateRef }) {
 
       <div className="mt-3">
         <p className="text-[11px] mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>ATTENTES</p>
-        <textarea value={trade.expectations} onChange={(e) => touch({ expectations: e.target.value })} placeholder="Ce que tu attends — niveaux, scénario, invalidation..." className="bg-transparent outline-none w-full text-sm resize-none" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary, lineHeight: 1.5 }} rows={2} />
+        <AutoTextarea value={trade.expectations} onChange={(v) => touch({ expectations: v })} placeholder="Ce que tu attends — niveaux, scénario, invalidation..." rows={2} />
       </div>
 
       <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${C.border}` }}>
@@ -909,6 +968,47 @@ function TradesSection({ trades, onUpdate, onAdd, onDelete, refOptions, onNaviga
 }
 
 // ================= EXPORT PDF =================
+function TrashModal({ trash, trashLabelFor, onRestore, onPurge, onClose }) {
+  const daysLeft = (deletedAt) => 30 - Math.floor((Date.now() - new Date(deletedAt).getTime()) / 86400000);
+  const sorted = [...trash].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+  return (
+    <div className="export-modal fixed inset-0 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.6)", zIndex: 50 }}>
+      <div className="rounded-xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: C.textPrimary, fontSize: "1.1rem" }}>Corbeille</h3>
+          <button onClick={onClose}><X size={16} color={C.textFaint} /></button>
+        </div>
+        <p className="text-xs mb-3" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          Les éléments supprimés restent ici 30 jours avant d'être purgés automatiquement.
+        </p>
+        {sorted.length === 0 ? (
+          <p className="text-xs" style={{ color: C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>La corbeille est vide.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {sorted.map((entry) => (
+              <div key={entry.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg" style={{ border: `1px solid ${C.border}` }}>
+                <div className="min-w-0">
+                  <p className="text-sm truncate" style={{ color: C.textPrimary, fontFamily: "'IBM Plex Sans', sans-serif" }}>{trashLabelFor(entry)}</p>
+                  <p className="text-[10px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{TRASH_LABELS_STATIC[entry.type]} · supprimé le {formatDate(entry.deletedAt)} · {daysLeft(entry.deletedAt)} j restants</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => onRestore(entry.id)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md" style={{ color: C.gold, border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+                    <RotateCcw size={11} /> Restaurer
+                  </button>
+                  <button onClick={() => { if (window.confirm("Supprimer définitivement ? Impossible à annuler.")) onPurge(entry.id); }} title="Supprimer définitivement" style={{ color: C.stale }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+const TRASH_LABELS_STATIC = { note: "Note", watchlist: "Watchlist", driver: "Driver", instrument: "Thèse", trade: "Trade" };
+
 function ExportGroup({ title, items, selected, onToggle, onAll }) {
   return (
     <div className="mb-3">
@@ -1141,6 +1241,10 @@ function PrintView({ selection, drivers, globalThesis, theses, trades, notebook 
 function flattenInstruments(theses) {
   return ASSET_CLASS_DEFS.flatMap((cls) => (theses[cls.id]?.instruments || []).filter((i) => !i.archived).map((i) => ({ ...i, clsId: cls.id, clsLabel: cls.label })));
 }
+function flattenReport(drivers) {
+  const sortedDrivers = [...drivers].sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
+  return [{ type: "global", id: "global" }, ...sortedDrivers.map((d) => ({ type: "driver", id: d.id }))];
+}
 
 function ThesisReadingBody({ inst, dark }) {
   const dir = DIRECTIONS.find((d) => d.key === inst.direction);
@@ -1186,18 +1290,62 @@ function ThesisReadingBody({ inst, dark }) {
   );
 }
 
-function ReadingView({ readingMode, theses, onClose, onNavigate, onPrint }) {
+function ReportReadingBody({ item, globalThesis, drivers, dark }) {
+  const fg = dark ? C.textPrimary : "#111";
+  const fgSoft = dark ? C.textSecondary : "#333";
+  const fgFaint = dark ? C.textFaint : "#666";
+
+  if (item.type === "global") {
+    return (
+      <div>
+        <p style={{ fontSize: "0.8rem", color: fgFaint, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 4 }}>Rapport macro</p>
+        <h1 style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: "2rem", color: fg, marginBottom: 4 }}>Vue d'ensemble globale des marchés</h1>
+        {globalThesis.updatedAt && <p style={{ fontSize: "0.8rem", color: fgFaint, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 24 }}>Dernière modification {formatDate(globalThesis.updatedAt)}</p>}
+        {globalThesis.content?.text ? (
+          <p style={{ whiteSpace: "pre-wrap", color: fgSoft, fontFamily: "'IBM Plex Sans', sans-serif", lineHeight: 1.7 }}>{globalThesis.content.text}</p>
+        ) : (
+          <p style={{ color: fgFaint, fontFamily: "'IBM Plex Sans', sans-serif", fontStyle: "italic" }}>Cette vue est encore vide.</p>
+        )}
+      </div>
+    );
+  }
+
+  const driver = drivers.find((d) => d.id === item.id);
+  if (!driver) return <p style={{ color: fgFaint }}>Driver introuvable.</p>;
+  return (
+    <div>
+      <p style={{ fontSize: "0.8rem", color: fgFaint, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 4 }}>Rapport macro · Driver{driver.isMain ? " principal" : ""}</p>
+      <h1 style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: "2rem", color: fg, marginBottom: 4 }}>{driver.name || "(sans nom)"}</h1>
+      <p style={{ fontSize: "0.8rem", color: fgFaint, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 24 }}>
+        {driver.updatedAt && <>Dernière modification {formatDate(driver.updatedAt)} — </>}
+        Classes concernées : {driver.assetClasses?.length ? driver.assetClasses.join(", ") : "aucune"}
+      </p>
+      {(driver.content?.text || driver.description) ? (
+        <p style={{ whiteSpace: "pre-wrap", color: fgSoft, fontFamily: "'IBM Plex Sans', sans-serif", lineHeight: 1.7 }}>{driver.content?.text || driver.description}</p>
+      ) : (
+        <p style={{ color: fgFaint, fontFamily: "'IBM Plex Sans', sans-serif", fontStyle: "italic" }}>Ce driver est encore vide.</p>
+      )}
+    </div>
+  );
+}
+
+function ReadingView({ readingMode, theses, drivers, globalThesis, onClose, onNavigate, onPrint }) {
   if (!readingMode) return null;
-  const list = flattenInstruments(theses);
-  const idx = list.findIndex((i) => i.clsId === readingMode.clsId && i.id === readingMode.instId);
-  const inst = list[idx];
-  if (!inst) return null;
+  const isReport = readingMode.kind === "report";
+  const list = isReport ? flattenReport(drivers) : flattenInstruments(theses);
+  const idx = isReport
+    ? list.findIndex((i) => i.id === readingMode.posId)
+    : list.findIndex((i) => i.clsId === readingMode.clsId && i.id === readingMode.instId);
+  const current = list[idx];
+  if (!current) return null;
+
+  const goTo = (item) => (isReport ? onNavigate({ kind: "report", posId: item.id }) : onNavigate({ kind: "instrument", clsId: item.clsId, instId: item.id }));
 
   return (
     <div className="no-print fixed inset-0 flex flex-col" style={{ backgroundColor: C.ink, zIndex: 60 }}>
       <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
         <span className="flex items-center gap-1.5 text-xs" style={{ color: C.gold, fontFamily: "'IBM Plex Sans', sans-serif" }}>
-          <Eye size={13} /> Mode lecture
+          <Eye size={13} /> Mode lecture {isReport ? "· Rapport macro" : ""}
         </span>
         <div className="flex items-center gap-3">
           <button onClick={onPrint} className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md" style={{ color: C.gold, border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
@@ -1209,16 +1357,16 @@ function ReadingView({ readingMode, theses, onClose, onNavigate, onPrint }) {
 
       <div className="flex-1 overflow-y-auto px-6 py-10 flex justify-center">
         <div className="w-full max-w-xl">
-          <ThesisReadingBody inst={inst} dark />
+          {isReport ? <ReportReadingBody item={current} globalThesis={globalThesis} drivers={drivers} dark /> : <ThesisReadingBody inst={current} dark />}
         </div>
       </div>
 
       <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: `1px solid ${C.border}` }}>
-        <button onClick={() => idx > 0 && onNavigate(list[idx - 1].clsId, list[idx - 1].id)} disabled={idx <= 0} className="text-xs" style={{ color: idx > 0 ? C.textPrimary : C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+        <button onClick={() => idx > 0 && goTo(list[idx - 1])} disabled={idx <= 0} className="text-xs" style={{ color: idx > 0 ? C.textPrimary : C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>
           ← Précédent
         </button>
         <span className="text-[11px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{idx + 1} / {list.length}</span>
-        <button onClick={() => idx < list.length - 1 && onNavigate(list[idx + 1].clsId, list[idx + 1].id)} disabled={idx >= list.length - 1} className="text-xs" style={{ color: idx < list.length - 1 ? C.textPrimary : C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+        <button onClick={() => idx < list.length - 1 && goTo(list[idx + 1])} disabled={idx >= list.length - 1} className="text-xs" style={{ color: idx < list.length - 1 ? C.textPrimary : C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}>
           Suivant →
         </button>
       </div>
@@ -1226,14 +1374,16 @@ function ReadingView({ readingMode, theses, onClose, onNavigate, onPrint }) {
   );
 }
 
-function ReadingPrintView({ readingMode, theses }) {
+function ReadingPrintView({ readingMode, theses, drivers, globalThesis }) {
   if (!readingMode) return null;
-  const list = flattenInstruments(theses);
-  const inst = list.find((i) => i.clsId === readingMode.clsId && i.id === readingMode.instId);
-  if (!inst) return null;
+  const isReport = readingMode.kind === "report";
+  const content = isReport
+    ? (() => { const item = flattenReport(drivers).find((i) => i.id === readingMode.posId); return item ? <ReportReadingBody item={item} globalThesis={globalThesis} drivers={drivers} /> : null; })()
+    : (() => { const inst = flattenInstruments(theses).find((i) => i.clsId === readingMode.clsId && i.id === readingMode.instId); return inst ? <ThesisReadingBody inst={inst} /> : null; })();
+  if (!content) return null;
   return (
     <div className="print-view" style={{ backgroundColor: "#fff", padding: "2.5rem", fontFamily: "Georgia, serif" }}>
-      <ThesisReadingBody inst={inst} />
+      {content}
     </div>
   );
 }
@@ -1248,6 +1398,8 @@ function Dashboard({ userEmail, onLogout }) {
   const [trades, setTrades] = useState([]);
   const [watchlists, setWatchlists] = useState([]);
   const [autoBackups, setAutoBackups] = useState([]);
+  const [trash, setTrash] = useState([]);
+  const [showTrash, setShowTrash] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState("idle");
   const [showExport, setShowExport] = useState(false);
@@ -1261,7 +1413,7 @@ function Dashboard({ userEmail, onLogout }) {
   useEffect(() => {
     (async () => {
       try {
-        const [nb, d, gt, th, tr, wl, ab] = await Promise.allSettled([
+        const [nb, d, gt, th, tr, wl, ab, tb] = await Promise.allSettled([
           storageGet("notebook-data-v1"),
           storageGet("drivers-data"),
           storageGet("global-thesis-data-v2"),
@@ -1269,6 +1421,7 @@ function Dashboard({ userEmail, onLogout }) {
           storageGet("trades-data-v2"),
           storageGet("watchlists-data-v1"),
           storageGet("autobackup-index"),
+          storageGet("trash-data-v1"),
         ]);
         if (nb.status === "fulfilled" && nb.value?.value) setNotebook(JSON.parse(nb.value.value));
         if (d.status === "fulfilled" && d.value?.value) setDrivers(JSON.parse(d.value.value));
@@ -1283,6 +1436,12 @@ function Dashboard({ userEmail, onLogout }) {
         }
         if (wl.status === "fulfilled" && wl.value?.value) setWatchlists(JSON.parse(wl.value.value));
         if (ab.status === "fulfilled" && ab.value?.value) setAutoBackups(JSON.parse(ab.value.value));
+        if (tb.status === "fulfilled" && tb.value?.value) {
+          const parsedTrash = JSON.parse(tb.value.value);
+          const fresh = parsedTrash.filter((e) => Date.now() - new Date(e.deletedAt).getTime() < 30 * 86400000);
+          setTrash(fresh);
+          if (fresh.length !== parsedTrash.length) storageSet("trash-data-v1", JSON.stringify(fresh)).catch(() => {});
+        }
       } catch (err) {
         // ignore — keep defaults
       } finally {
@@ -1305,7 +1464,39 @@ function Dashboard({ userEmail, onLogout }) {
     }, 400);
   }, []);
 
-  // ---- Sauvegarde automatique périodique (indépendante de persist, silencieuse) ----
+  const TRASH_LABELS = { note: "Note", watchlist: "Watchlist", driver: "Driver", instrument: "Thèse", trade: "Trade" };
+  const trashLabelFor = (entry) => {
+    if (entry.type === "note") return entry.payload.title || "(sans titre)";
+    if (entry.type === "watchlist") return entry.payload.name || "(sans nom)";
+    if (entry.type === "driver") return entry.payload.name || "(sans nom)";
+    if (entry.type === "instrument") return entry.payload.symbol || "(sans nom)";
+    if (entry.type === "trade") return entry.payload.ticker || "(sans nom)";
+    return "(élément)";
+  };
+  const trashItem = (type, payload, extra = {}) => {
+    const entry = { id: uid(), type, payload, extra, deletedAt: new Date().toISOString() };
+    const next = [entry, ...trash];
+    setTrash(next);
+    persist("trash-data-v1", next);
+  };
+  const restoreFromTrash = (entryId) => {
+    const entry = trash.find((e) => e.id === entryId);
+    if (!entry) return;
+    if (entry.type === "note") updateNotebook({ ...notebook, notes: [...(notebook.notes || []), entry.payload] });
+    else if (entry.type === "watchlist") { const next = [...watchlists, entry.payload]; setWatchlists(next); persist("watchlists-data-v1", next); }
+    else if (entry.type === "driver") { const next = [...drivers, entry.payload]; setDrivers(next); persist("drivers-data", next); }
+    else if (entry.type === "instrument") {
+      const clsId = entry.extra.clsId;
+      const next = { ...theses, [clsId]: { instruments: [...theses[clsId].instruments, entry.payload] } };
+      setTheses(next); persist("theses-data-v2", next);
+    } else if (entry.type === "trade") { const next = [...trades, entry.payload]; setTrades(next); persist("trades-data-v2", next); }
+    const remaining = trash.filter((e) => e.id !== entryId);
+    setTrash(remaining); persist("trash-data-v1", remaining);
+  };
+  const purgeFromTrash = (entryId) => {
+    const remaining = trash.filter((e) => e.id !== entryId);
+    setTrash(remaining); persist("trash-data-v1", remaining);
+  };
   const stateRef = useRef();
   stateRef.current = { notebook, drivers, globalThesis, theses, trades, watchlists };
   const autoBackupsRef = useRef(autoBackups);
@@ -1356,7 +1547,10 @@ function Dashboard({ userEmail, onLogout }) {
     updateNotebook(next);
   };
   const deleteNote = (id) => {
-    if (!window.confirm("Supprimer cette note ?")) return;
+    const note = (notebook.notes || []).find((n) => n.id === id);
+    if (!note) return;
+    if (!window.confirm("Envoyer cette note à la corbeille ?")) return;
+    trashItem("note", note);
     updateNotebook({ ...notebook, notes: (notebook.notes || []).filter((n) => n.id !== id) });
   };
   const addFolder = () => {
@@ -1382,14 +1576,21 @@ function Dashboard({ userEmail, onLogout }) {
   };
   const updateWatchlist = (updated) => { const next = watchlists.map((w) => (w.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : w)); setWatchlists(next); persist("watchlists-data-v1", next); };
   const deleteWatchlist = (id) => {
-    if (!window.confirm("Supprimer cette watchlist ?")) return;
+    const wl = watchlists.find((w) => w.id === id);
+    if (!wl) return;
+    if (!window.confirm("Envoyer cette watchlist à la corbeille ?")) return;
+    trashItem("watchlist", wl);
     const next = watchlists.filter((w) => w.id !== id);
     setWatchlists(next); persist("watchlists-data-v1", next);
   };
 
   const addDriver = () => { const next = [...drivers, { id: uid(), name: "", content: emptyContent(), history: [], isMain: false, assetClasses: [], updatedAt: new Date().toISOString() }]; setDrivers(next); persist("drivers-data", next); };
   const updateDriver = (id, updated) => { const next = drivers.map((d) => (d.id === id ? { ...updated, updatedAt: new Date().toISOString() } : d)); setDrivers(next); persist("drivers-data", next); };
-  const deleteDriver = (id) => { const next = drivers.filter((d) => d.id !== id); setDrivers(next); persist("drivers-data", next); };
+  const deleteDriver = (id) => {
+    const driver = drivers.find((d) => d.id === id);
+    if (driver) trashItem("driver", driver);
+    const next = drivers.filter((d) => d.id !== id); setDrivers(next); persist("drivers-data", next);
+  };
   const setMainDriver = (id) => { const next = drivers.map((d) => ({ ...d, isMain: d.id === id ? !d.isMain : false })); setDrivers(next); persist("drivers-data", next); };
 
   const updateGlobalThesis = (content) => { const next = { ...globalThesis, content, updatedAt: new Date().toISOString() }; setGlobalThesis(next); persist("global-thesis-data-v2", next); };
@@ -1438,6 +1639,7 @@ function Dashboard({ userEmail, onLogout }) {
             argumentsAgainst: "",
             catalysts: "",
             risks: "",
+            tags: [],
             originalSnapshot: null,
             createdAt: new Date().toISOString(),
             updatedAt: null,
@@ -1448,6 +1650,8 @@ function Dashboard({ userEmail, onLogout }) {
     setTheses(next); persist("theses-data-v2", next);
   };
   const deleteInstrument = (clsId, instId) => {
+    const inst = theses[clsId].instruments.find((i) => i.id === instId);
+    if (inst) trashItem("instrument", inst, { clsId });
     const next = { ...theses, [clsId]: { instruments: theses[clsId].instruments.filter((i) => i.id !== instId) } };
     setTheses(next); persist("theses-data-v2", next);
   };
@@ -1464,6 +1668,7 @@ function Dashboard({ userEmail, onLogout }) {
         horizon: null,
         reasons: emptyContent(),
         expectations: "",
+        tags: [],
         entry: "",
         stop: "",
         takeProfit: "",
@@ -1478,7 +1683,11 @@ function Dashboard({ userEmail, onLogout }) {
     setTrades(next); persist("trades-data-v2", next);
   };
   const updateTrade = (updated) => { const next = trades.map((t) => (t.id === updated.id ? updated : t)); setTrades(next); persist("trades-data-v2", next); };
-  const deleteTrade = (id) => { const next = trades.filter((t) => t.id !== id); setTrades(next); persist("trades-data-v2", next); };
+  const deleteTrade = (id) => {
+    const trade = trades.find((t) => t.id === id);
+    if (trade) trashItem("trade", trade);
+    const next = trades.filter((t) => t.id !== id); setTrades(next); persist("trades-data-v2", next);
+  };
 
   const exportBackup = () => {
     const payload = { notebook, drivers, globalThesis, theses, trades, watchlists, exportedAt: new Date().toISOString() };
@@ -1517,7 +1726,8 @@ function Dashboard({ userEmail, onLogout }) {
   ];
   const onNavigateRef = (type) => setActiveTab(type === "driver" ? "drivers" : type === "instrument" ? "thesis" : "trades");
 
-  const openReading = (clsId, instId) => setReadingMode({ clsId, instId });
+  const openInstrumentReading = (clsId, instId) => setReadingMode({ kind: "instrument", clsId, instId });
+  const openReportReading = (posId) => setReadingMode({ kind: "report", posId });
   const closeReading = () => setReadingMode(null);
   const printReading = () => { setPrintMode("reading"); setTimeout(() => window.print(), 150); };
 
@@ -1527,11 +1737,36 @@ function Dashboard({ userEmail, onLogout }) {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
     const results = [];
-    drivers.forEach((d) => { if (d.name && d.name.toLowerCase().includes(q)) results.push({ tab: "drivers", label: `Driver · ${d.name}` }); });
-    ASSET_CLASS_DEFS.forEach((cls) => (theses[cls.id]?.instruments || []).forEach((i) => { if (i.symbol && i.symbol.toLowerCase().includes(q)) results.push({ tab: "thesis", label: `Thèse · ${cls.label} · ${i.symbol}` }); }));
-    trades.forEach((t) => { if (t.ticker && t.ticker.toLowerCase().includes(q)) results.push({ tab: "trades", label: `Trade · ${t.ticker}` }); });
+    if ((globalThesis.content?.text || "").toLowerCase().includes(q)) results.push({ tab: "thesis", label: "Thèse · Vue d'ensemble globale" });
+    drivers.forEach((d) => {
+      const hit = (d.name && d.name.toLowerCase().includes(q)) || (d.content?.text || "").toLowerCase().includes(q) || (d.description || "").toLowerCase().includes(q);
+      if (hit) results.push({ tab: "drivers", label: `Driver · ${d.name || "(sans nom)"}` });
+    });
+    ASSET_CLASS_DEFS.forEach((cls) => (theses[cls.id]?.instruments || []).forEach((i) => {
+      const hit = (i.symbol && i.symbol.toLowerCase().includes(q))
+        || (i.content?.text || "").toLowerCase().includes(q)
+        || (i.context || "").toLowerCase().includes(q)
+        || (i.argumentsFor || "").toLowerCase().includes(q)
+        || (i.argumentsAgainst || "").toLowerCase().includes(q)
+        || (i.catalysts || "").toLowerCase().includes(q)
+        || (i.risks || "").toLowerCase().includes(q)
+        || (i.tags || []).some((t) => t.toLowerCase().includes(q));
+      if (hit) results.push({ tab: "thesis", label: `Thèse · ${cls.label} · ${i.symbol || "(sans nom)"}` });
+    }));
+    trades.forEach((t) => {
+      const hit = (t.ticker && t.ticker.toLowerCase().includes(q))
+        || (t.reasons?.text || "").toLowerCase().includes(q)
+        || (t.expectations || "").toLowerCase().includes(q)
+        || (t.tags || []).some((tg) => tg.toLowerCase().includes(q));
+      if (hit) results.push({ tab: "trades", label: `Trade · ${t.ticker || "(sans nom)"}` });
+    });
     watchlists.forEach((w) => w.items.forEach((i) => { if (i.symbol && i.symbol.toLowerCase().includes(q)) results.push({ tab: "watchlist", label: `Watchlist · ${w.name} · ${i.symbol}` }); }));
-    (notebook.notes || []).forEach((n) => { if ((n.title && n.title.toLowerCase().includes(q)) || (n.tags || []).some((t) => t.toLowerCase().includes(q))) results.push({ tab: "notebook", label: `Note · ${n.title || "(sans titre)"}` }); });
+    (notebook.notes || []).forEach((n) => {
+      const hit = (n.title && n.title.toLowerCase().includes(q))
+        || (n.content?.text || "").toLowerCase().includes(q)
+        || (n.tags || []).some((t) => t.toLowerCase().includes(q));
+      if (hit) results.push({ tab: "notebook", label: `Note · ${n.title || "(sans titre)"}` });
+    });
     return results.slice(0, 12);
   })();
   const subtitles = {
@@ -1604,6 +1839,10 @@ function Dashboard({ userEmail, onLogout }) {
           </button>
           <input ref={fileInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) importBackup(f); e.target.value = ""; }} />
 
+          <button onClick={() => setShowTrash(true)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm mt-2" style={{ color: C.textSecondary, border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+            <Trash2 size={15} strokeWidth={1.75} /> Corbeille {trash.length > 0 && <span className="ml-auto text-[10px]" style={{ color: C.gold, fontFamily: "'IBM Plex Mono', monospace" }}>{trash.length}</span>}
+          </button>
+
           <div className="mt-auto px-2.5 text-[11px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>
             {saveState === "saving" && <span className="flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> sauvegarde...</span>}
             {saveState === "saved" && <span>✓ enregistré</span>}
@@ -1622,9 +1861,9 @@ function Dashboard({ userEmail, onLogout }) {
             ) : activeTab === "overview" ? (
               <OverviewSection theses={theses} trades={trades} onNavigate={setActiveTab} />
             ) : activeTab === "drivers" ? (
-              <DriversSection drivers={drivers} onUpdate={updateDriver} onAdd={addDriver} onDelete={deleteDriver} onSetMain={setMainDriver} refOptions={refOptions} onNavigateRef={onNavigateRef} />
+              <DriversSection drivers={drivers} onUpdate={updateDriver} onAdd={addDriver} onDelete={deleteDriver} onSetMain={setMainDriver} onOpenReading={openReportReading} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "thesis" ? (
-              <ThesisSection globalThesis={globalThesis} onUpdateGlobal={updateGlobalThesis} onSnapshotGlobal={snapshotGlobalThesis} onUpdateGlobalHistoryEntry={updateGlobalThesisHistoryEntry} onDeleteGlobalHistoryEntry={deleteGlobalThesisHistoryEntry} theses={theses} onUpdateInstrument={updateInstrument} onAddInstrument={addInstrument} onDeleteInstrument={deleteInstrument} onOpenReading={openReading} refOptions={refOptions} onNavigateRef={onNavigateRef} />
+              <ThesisSection globalThesis={globalThesis} onUpdateGlobal={updateGlobalThesis} onSnapshotGlobal={snapshotGlobalThesis} onUpdateGlobalHistoryEntry={updateGlobalThesisHistoryEntry} onDeleteGlobalHistoryEntry={deleteGlobalThesisHistoryEntry} theses={theses} onUpdateInstrument={updateInstrument} onAddInstrument={addInstrument} onDeleteInstrument={deleteInstrument} onOpenInstrumentReading={openInstrumentReading} onOpenGlobalReading={() => openReportReading("global")} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "trades" ? (
               <TradesSection trades={trades} onUpdate={updateTrade} onAdd={addTrade} onDelete={deleteTrade} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "watchlist" ? (
@@ -1638,8 +1877,9 @@ function Dashboard({ userEmail, onLogout }) {
 
       {printMode === "export" && <PrintView selection={exportSelection} drivers={drivers} globalThesis={globalThesis} theses={theses} trades={trades} notebook={notebook} />}
       {showExport && <ExportModal selection={exportSelection} setSelection={setExportSelection} drivers={drivers} theses={theses} trades={trades} notebook={notebook} autoBackups={autoBackups} onRestoreAutoBackup={restoreAutoBackup} setPrintMode={setPrintMode} onClose={() => setShowExport(false)} />}
-      <ReadingView readingMode={readingMode} theses={theses} onClose={closeReading} onNavigate={openReading} onPrint={printReading} />
-      {printMode === "reading" && <ReadingPrintView readingMode={readingMode} theses={theses} />}
+      {showTrash && <TrashModal trash={trash} trashLabelFor={trashLabelFor} onRestore={restoreFromTrash} onPurge={purgeFromTrash} onClose={() => setShowTrash(false)} />}
+      <ReadingView readingMode={readingMode} theses={theses} drivers={drivers} globalThesis={globalThesis} onClose={closeReading} onNavigate={setReadingMode} onPrint={printReading} />
+      {printMode === "reading" && <ReadingPrintView readingMode={readingMode} theses={theses} drivers={drivers} globalThesis={globalThesis} />}
     </div>
   );
 }
