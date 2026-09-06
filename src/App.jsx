@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Compass, ScrollText, Target, Plus, X, ChevronDown, ChevronRight, Loader2, Star, Globe2, Download, Link2, Image as ImageIcon, Search, LogOut, Eye, AlertTriangle, StickyNote, Folder, Archive, Trash2, RotateCcw, Maximize2 } from "lucide-react";
+import { Compass, ScrollText, ChevronUp, Plus, X, ChevronDown, ChevronRight, Loader2, Star, Globe2, Download, Link2, Image as ImageIcon, Search, LogOut, Eye, AlertTriangle, StickyNote, Folder, Archive, Trash2, RotateCcw, Maximize2 } from "lucide-react";
 import { storageGet, storageSet } from "./storage";
 import { auth } from "./firebase";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
@@ -16,7 +16,6 @@ const C = {
   neutral: "#8A8478",
   gold: "#C4A661",
   stale: "#C9694A",
-  trade: "#6D9C82",
   textPrimary: "#ECE8E1",
   textSecondary: "#8D9199",
   textFaint: "#5C6167",
@@ -24,6 +23,34 @@ const C = {
 
 const FONTS = `
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+`;
+
+const GLOBAL_POLISH = `
+* { scrollbar-color: #343B44 transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #343B44; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #4A5058; }
+
+.rounded-xl, .rounded-lg {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.28), 0 4px 14px rgba(0,0,0,0.22);
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+button, a, input, textarea, select {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+}
+button:not(:disabled) { cursor: pointer; }
+button:not(:disabled):active { transform: translateY(1px); }
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(196,166,97,0.45);
+  border-radius: 4px;
+}
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(196,166,97,0.55);
+  border-radius: 6px;
+}
 `;
 
 const PRINT_CSS = `
@@ -49,6 +76,28 @@ function emptyContent() {
 function ensureContent(c) {
   return { text: c?.text || "", images: c?.images || [], links: c?.links || [], refs: c?.refs || [] };
 }
+function normalizeArguments(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === "string" && val.trim()) return [{ id: uid(), text: val, checked: false, strength: "moyen" }];
+  return [];
+}
+function normalizeInstrument(i) {
+  return {
+    ...i,
+    argumentsFor: normalizeArguments(i.argumentsFor),
+    argumentsAgainst: normalizeArguments(i.argumentsAgainst),
+    blindSpot: i.blindSpot || "",
+    reviewedAt: i.reviewedAt || null,
+    reviewIntervalDays: i.reviewIntervalDays || 7,
+    tags: i.tags || [],
+  };
+}
+const REVIEW_MAX_INTERVAL_DAYS = 90;
+const ARGUMENT_STRENGTHS = [
+  { key: "fort", label: "Fort", color: C.hawk },
+  { key: "moyen", label: "Moyen", color: C.gold },
+  { key: "faible", label: "Faible", color: C.neutral },
+];
 const FRESHNESS_DAYS = 14;
 function UpdatedBadge({ updatedAt }) {
   if (!updatedAt) return null;
@@ -130,10 +179,14 @@ function seedTheses() {
         conviction: null,
         horizon: null,
         context: "",
-        argumentsFor: "",
-        argumentsAgainst: "",
+        argumentsFor: [],
+        argumentsAgainst: [],
         catalysts: "",
         risks: "",
+        blindSpot: "",
+        tags: [],
+        reviewedAt: null,
+        reviewIntervalDays: 7,
         originalSnapshot: null,
         createdAt: null,
         updatedAt: null,
@@ -163,18 +216,11 @@ const THESIS_STATUSES = [
   { key: "invalidee", label: "Invalidée", color: C.stale },
   { key: "realisee", label: "Réalisée", color: C.dove },
 ];
-const TRADE_RESULTS = [
-  { key: "en_cours", label: "En cours", color: C.neutral },
-  { key: "gagnant", label: "Gagnant", color: C.dove },
-  { key: "perdant", label: "Perdant", color: C.stale },
-  { key: "breakeven", label: "Breakeven", color: C.gold },
-];
 
 const NAV_ITEMS = [
   { id: "overview", label: "Vue d'ensemble", icon: AlertTriangle },
   { id: "drivers", label: "Drivers Macro", icon: Compass },
   { id: "thesis", label: "Thèse Macro", icon: ScrollText },
-  { id: "trades", label: "Trades", icon: Target },
   { id: "watchlist", label: "Watchlist", icon: Eye },
   { id: "notebook", label: "Bloc-Note", icon: StickyNote },
 ];
@@ -192,17 +238,21 @@ function TagButton({ active, color, label, onClick }) {
   );
 }
 
-function AutoTextarea({ value, onChange, onBlur, placeholder, rows = 4, minFontSize = "0.875rem", style }) {
+function AutoTextarea({ value, onChange, onBlur, placeholder, rows = 4, compactRows = 3, minFontSize = "0.875rem", style }) {
   const ref = useRef(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
-  const resize = () => {
+  useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = el.scrollHeight + "px";
-  };
-  useEffect(() => { resize(); }, [value]);
+    if (expanded) {
+      el.style.height = "auto";
+      el.style.height = el.scrollHeight + "px";
+    } else {
+      el.style.height = "";
+    }
+  }, [value, expanded]);
 
   return (
     <div className="relative group">
@@ -212,19 +262,38 @@ function AutoTextarea({ value, onChange, onBlur, placeholder, rows = 4, minFontS
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         placeholder={placeholder}
-        rows={rows}
-        className="bg-transparent outline-none w-full resize-none pr-6"
-        style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary, lineHeight: 1.6, fontSize: minFontSize, overflow: "hidden", ...style }}
+        rows={expanded ? rows : compactRows}
+        className="bg-transparent outline-none w-full resize-none pr-12"
+        style={{
+          fontFamily: "'IBM Plex Sans', sans-serif",
+          color: C.textPrimary,
+          lineHeight: 1.6,
+          fontSize: minFontSize,
+          overflowY: expanded ? "hidden" : "auto",
+          maxHeight: expanded ? "none" : `${compactRows * 1.6 + 0.4}em`,
+          ...style,
+        }}
       />
-      <button
-        type="button"
-        onClick={() => setFullscreen(true)}
-        title="Agrandir en plein écran"
-        className="absolute top-0 right-0 opacity-40 hover:opacity-100"
-        style={{ color: C.textFaint }}
-      >
-        <Maximize2 size={12} />
-      </button>
+      <div className="absolute top-0 right-0 flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          title={expanded ? "Format compact (pour scroller)" : "Format large (pour rédiger/lire)"}
+          className="opacity-40 hover:opacity-100"
+          style={{ color: C.textFaint }}
+        >
+          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+        <button
+          type="button"
+          onClick={() => setFullscreen(true)}
+          title="Agrandir en plein écran"
+          className="opacity-40 hover:opacity-100"
+          style={{ color: C.textFaint }}
+        >
+          <Maximize2 size={12} />
+        </button>
+      </div>
 
       {fullscreen && (
         <div className="no-print fixed inset-0 flex flex-col" style={{ backgroundColor: C.ink, zIndex: 70 }}>
@@ -278,16 +347,23 @@ function LabeledInput({ label, value, onChange, placeholder }) {
   );
 }
 
-function SectionHeading({ title, subtitle }) {
+function SectionHeading({ title, subtitle, icon: Icon }) {
   return (
-    <>
-      <h2 className="text-2xl mb-1" style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: C.textPrimary }}>{title}</h2>
-      {subtitle && <p className="text-sm mb-6" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif" }}>{subtitle}</p>}
-    </>
+    <div className="mb-6 pb-4" style={{ borderBottom: `1px solid ${C.border}` }}>
+      <div className="flex items-center gap-2.5">
+        {Icon && (
+          <div className="flex items-center justify-center flex-shrink-0" style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: C.surfaceRaised, border: `1px solid ${C.border}` }}>
+            <Icon size={16} color={C.gold} strokeWidth={1.75} />
+          </div>
+        )}
+        <h2 className="text-2xl" style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: C.textPrimary, letterSpacing: "-0.01em" }}>{title}</h2>
+      </div>
+      {subtitle && <p className="text-sm mt-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif" }}>{subtitle}</p>}
+    </div>
   );
 }
 
-// Reusable rich content editor: text + images (url) + links + @ references to Drivers/Thèse/Trades
+// Reusable rich content editor: text + images (url) + links + @ references to Drivers/Thèse
 function RichContentEditor({ content, onChange, refOptions, onNavigateRef, placeholder, rows = 4, onSnapshot }) {
   const addImage = () => {
     const url = window.prompt("URL de l'image :");
@@ -312,7 +388,7 @@ function RichContentEditor({ content, onChange, refOptions, onNavigateRef, place
     }
     e.target.value = "";
   };
-  const refColor = { driver: C.gold, instrument: C.neutral, trade: C.trade };
+  const refColor = { driver: C.gold, instrument: C.neutral };
 
   return (
     <div>
@@ -377,11 +453,6 @@ function RichContentEditor({ content, onChange, refOptions, onNavigateRef, place
           {refOptions.filter((o) => o.type === "instrument").length > 0 && (
             <optgroup label="Thèse Macro (instruments)" style={{ color: "#000" }}>
               {refOptions.filter((o) => o.type === "instrument").map((o) => (<option key={`${o.type}:${o.id}`} value={`${o.type}:${o.id}`} style={{ color: "#000" }}>{o.label}</option>))}
-            </optgroup>
-          )}
-          {refOptions.filter((o) => o.type === "trade").length > 0 && (
-            <optgroup label="Trades" style={{ color: "#000" }}>
-              {refOptions.filter((o) => o.type === "trade").map((o) => (<option key={`${o.type}:${o.id}`} value={`${o.type}:${o.id}`} style={{ color: "#000" }}>{o.label}</option>))}
             </optgroup>
           )}
           {refOptions.length === 0 && (
@@ -711,12 +782,63 @@ function OriginalThesisBlock({ snapshot }) {
           </p>
           {snapshot.context && <p className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}><em>Contexte :</em> {snapshot.context}</p>}
           {snapshot.thesisText && <p className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}>{snapshot.thesisText}</p>}
-          {snapshot.argumentsFor && <p className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}><em>Pour :</em> {snapshot.argumentsFor}</p>}
-          {snapshot.argumentsAgainst && <p className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}><em>Contre :</em> {snapshot.argumentsAgainst}</p>}
+          {snapshot.argumentsFor?.length > 0 && (
+            <div className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+              <em>Pour :</em>
+              <ul className="pl-4 mt-0.5">{snapshot.argumentsFor.map((it) => <li key={it.id} style={{ textDecoration: it.checked ? "line-through" : "none" }}>{it.text}</li>)}</ul>
+            </div>
+          )}
+          {snapshot.argumentsAgainst?.length > 0 && (
+            <div className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+              <em>Contre :</em>
+              <ul className="pl-4 mt-0.5">{snapshot.argumentsAgainst.map((it) => <li key={it.id} style={{ textDecoration: it.checked ? "line-through" : "none" }}>{it.text}</li>)}</ul>
+            </div>
+          )}
           {snapshot.catalysts && <p className="text-xs mb-1.5" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}><em>Catalyseurs :</em> {snapshot.catalysts}</p>}
           {snapshot.risks && <p className="text-xs" style={{ color: C.textSecondary, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "pre-wrap" }}><em>Risques :</em> {snapshot.risks}</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+function argumentsSummary(items) {
+  return (items || []).map((it) => `${it.checked ? "[invalidé] " : ""}${it.text}${it.strength ? ` (${it.strength})` : ""}`).join(" · ");
+}
+
+function ArgumentChecklist({ label, items, onChange, placeholder }) {
+  const list = items || [];
+  const add = () => onChange([...list, { id: uid(), text: "", checked: false, strength: "moyen" }]);
+  const update = (id, patch) => onChange(list.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  const remove = (id) => onChange(list.filter((it) => it.id !== id));
+  return (
+    <div className="mt-2.5">
+      <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{label}</p>
+      <div className="flex flex-col gap-1.5">
+        {list.map((it) => (
+          <div key={it.id} className="flex items-start gap-2 rounded-lg p-2" style={{ backgroundColor: C.ink, border: `1px solid ${C.border}`, opacity: it.checked ? 0.55 : 1 }}>
+            <input type="checkbox" checked={!!it.checked} onChange={(e) => update(it.id, { checked: e.target.checked })} title="Cocher si cet argument ne tient plus" className="mt-1 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <input
+                value={it.text}
+                onChange={(e) => update(it.id, { text: e.target.value })}
+                placeholder={placeholder}
+                className="bg-transparent outline-none w-full text-sm"
+                style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: it.checked ? C.textFaint : C.textPrimary, textDecoration: it.checked ? "line-through" : "none" }}
+              />
+              <div className="flex gap-1 mt-1">
+                {ARGUMENT_STRENGTHS.map((s) => (
+                  <TagButton key={s.key} active={it.strength === s.key} color={s.color} label={s.label} onClick={() => update(it.id, { strength: s.key })} />
+                ))}
+              </div>
+            </div>
+            <button onClick={() => remove(it.id)} className="flex-shrink-0" style={{ color: C.textFaint }}><X size={12} /></button>
+          </div>
+        ))}
+      </div>
+      <button onClick={add} className="flex items-center gap-1 text-[11px] mt-1.5 px-2 py-1 rounded-md" style={{ color: C.textSecondary, border: `1px dashed ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+        <Plus size={11} /> Ajouter un argument
+      </button>
     </div>
   );
 }
@@ -746,8 +868,8 @@ function InstrumentRow({ instrument, onUpdate, onDelete, onArchiveToggle, onOpen
         horizon: instrument.horizon || null,
         context: instrument.context || "",
         thesisText: instrument.content?.text || "",
-        argumentsFor: instrument.argumentsFor || "",
-        argumentsAgainst: instrument.argumentsAgainst || "",
+        argumentsFor: instrument.argumentsFor || [],
+        argumentsAgainst: instrument.argumentsAgainst || [],
         catalysts: instrument.catalysts || "",
         risks: instrument.risks || "",
       },
@@ -812,10 +934,11 @@ function InstrumentRow({ instrument, onUpdate, onDelete, onArchiveToggle, onOpen
         <RichContentEditor content={instrument.content} onChange={(c) => touch({ content: c })} onSnapshot={snapshot} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder={placeholder} rows={3} />
       </div>
 
-      <LabeledTextarea label="Arguments en faveur" value={instrument.argumentsFor} onChange={(v) => touch({ argumentsFor: v })} placeholder="Ce qui soutient la thèse..." rows={2} />
-      <LabeledTextarea label="Arguments contre" value={instrument.argumentsAgainst} onChange={(v) => touch({ argumentsAgainst: v })} placeholder="Ce qui pourrait l'invalider..." rows={2} />
+      <ArgumentChecklist label="Arguments en faveur" items={instrument.argumentsFor} onChange={(v) => touch({ argumentsFor: v })} placeholder="Ce qui soutient la thèse..." />
+      <ArgumentChecklist label="Arguments contre" items={instrument.argumentsAgainst} onChange={(v) => touch({ argumentsAgainst: v })} placeholder="Ce qui pourrait l'invalider..." />
       <LabeledTextarea label="Catalyseurs" value={instrument.catalysts} onChange={(v) => touch({ catalysts: v })} placeholder="Événements à surveiller..." rows={2} />
       <LabeledTextarea label="Risques / invalidation" value={instrument.risks} onChange={(v) => touch({ risks: v })} placeholder="Ce qui invaliderait la thèse..." rows={2} />
+      <LabeledTextarea label="Angle mort — ce qui me ferait changer d'avis" value={instrument.blindSpot} onChange={(v) => touch({ blindSpot: v })} placeholder="Qu'est-ce qui prouverait que j'ai tort ?" rows={2} />
 
       {instrument.updatedAt && <UpdatedBadge updatedAt={instrument.updatedAt} />}
 
@@ -877,9 +1000,12 @@ function AssetClassBlock({ cls, data, onUpdateInstrument, onAdd, onDelete, onOpe
   );
 }
 
-function ThesisSection({ globalThesis, onUpdateGlobal, onSnapshotGlobal, onUpdateGlobalHistoryEntry, onDeleteGlobalHistoryEntry, theses, onUpdateInstrument, onAddInstrument, onDeleteInstrument, onOpenInstrumentReading, onOpenGlobalReading, refOptions, onNavigateRef }) {
+function ThesisSection({ globalThesis, onUpdateGlobal, onSnapshotGlobal, onUpdateGlobalHistoryEntry, onDeleteGlobalHistoryEntry, theses, onUpdateInstrument, onAddInstrument, onDeleteInstrument, onOpenInstrumentReading, onOpenGlobalReading, onOpenCompare, refOptions, onNavigateRef }) {
   return (
     <div>
+      <button onClick={onOpenCompare} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md mb-4" style={{ color: C.gold, border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+        <Compass size={13} /> Comparer deux thèses
+      </button>
       <GlobalThesisCard content={globalThesis.content} updatedAt={globalThesis.updatedAt} history={globalThesis.history} onUpdate={onUpdateGlobal} onSnapshot={onSnapshotGlobal} onUpdateHistoryEntry={onUpdateGlobalHistoryEntry} onDeleteHistoryEntry={onDeleteGlobalHistoryEntry} onOpenReading={onOpenGlobalReading} refOptions={refOptions} onNavigateRef={onNavigateRef} />
       {ASSET_CLASS_DEFS.map((cls) => (
         <AssetClassBlock
@@ -894,75 +1020,6 @@ function ThesisSection({ globalThesis, onUpdateGlobal, onSnapshotGlobal, onUpdat
           onNavigateRef={onNavigateRef}
         />
       ))}
-    </div>
-  );
-}
-
-// ================= TRADES =================
-function TradeCard({ trade, onUpdate, onDelete, refOptions, onNavigateRef }) {
-  const touch = (patch) => onUpdate({ ...trade, ...patch, updatedAt: new Date().toISOString() });
-  const convictionColor = CONVICTIONS.find((c) => c.key === trade.conviction)?.color;
-  return (
-    <div className="rounded-xl p-4" style={{ backgroundColor: C.surface, border: `1px solid ${convictionColor || C.border}` }}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 flex-1">
-          <input value={trade.ticker} onChange={(e) => touch({ ticker: e.target.value })} placeholder="Actif / ticker" className="bg-transparent outline-none text-base font-medium" style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: C.textPrimary, width: "9rem" }} />
-          {trade.direction && <span className="text-[10px] uppercase px-1.5 py-0.5 rounded" style={{ fontFamily: "'IBM Plex Mono', monospace", color: DIRECTIONS.find((d) => d.key === trade.direction)?.color, border: `1px solid ${DIRECTIONS.find((d) => d.key === trade.direction)?.color}` }}>{DIRECTIONS.find((d) => d.key === trade.direction)?.label}</span>}
-        </div>
-        <button onClick={onDelete} className="p-0.5 rounded hover:opacity-70" style={{ color: C.textFaint }}><X size={14} /></button>
-      </div>
-      <select value={trade.assetClass} onChange={(e) => touch({ assetClass: e.target.value })} className="bg-transparent outline-none text-xs mt-2" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 6px" }}>
-        <option value="" style={{ color: "#000" }}>Classe d'actif...</option>
-        {ASSET_CLASSES.map((a) => <option key={a} value={a} style={{ color: "#000" }}>{a}</option>)}
-      </select>
-      <div className="flex flex-wrap gap-1.5 mt-2">{DIRECTIONS.map((d) => <TagButton key={d.key} active={trade.direction === d.key} color={d.color} label={d.label} onClick={() => touch({ direction: trade.direction === d.key ? null : d.key })} />)}</div>
-      <div className="flex flex-wrap gap-1.5 mt-1.5">{CONVICTIONS.map((c) => <TagButton key={c.key} active={trade.conviction === c.key} color={c.color} label={`Conviction ${c.label.toLowerCase()}`} onClick={() => touch({ conviction: trade.conviction === c.key ? null : c.key })} />)}</div>
-      <div className="flex flex-wrap gap-1.5 mt-1.5">{HORIZONS.map((h) => <TagButton key={h.key} active={trade.horizon === h.key} color={C.gold} label={h.label} onClick={() => touch({ horizon: trade.horizon === h.key ? null : h.key })} />)}</div>
-
-      <TagEditor tags={trade.tags} onChange={(tags) => touch({ tags })} />
-
-      <div className="mt-3">
-        <p className="text-[11px] mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>RAISONS DU TRADE (la thèse)</p>
-        <RichContentEditor content={trade.reasons} onChange={(c) => touch({ reasons: c })} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Pourquoi ce trade — fondamentaux, driver, catalyseur..." rows={2} />
-      </div>
-
-      <div className="mt-3">
-        <p className="text-[11px] mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>ATTENTES</p>
-        <AutoTextarea value={trade.expectations} onChange={(v) => touch({ expectations: v })} placeholder="Ce que tu attends — niveaux, scénario, invalidation..." rows={2} />
-      </div>
-
-      <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${C.border}` }}>
-        <p className="text-[11px] mb-2" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>EXÉCUTION</p>
-        <div className="grid grid-cols-2 gap-2">
-          <LabeledInput label="Entrée" value={trade.entry} onChange={(v) => touch({ entry: v })} placeholder="Prix d'entrée" />
-          <LabeledInput label="Stop" value={trade.stop} onChange={(v) => touch({ stop: v })} placeholder="Stop loss" />
-          <LabeledInput label="Take Profit" value={trade.takeProfit} onChange={(v) => touch({ takeProfit: v })} placeholder="Objectif" />
-          <LabeledInput label="Taille" value={trade.size} onChange={(v) => touch({ size: v })} placeholder="Taille de position" />
-          <LabeledInput label="Risque %" value={trade.riskPercent} onChange={(v) => touch({ riskPercent: v })} placeholder="Ex. 1%" />
-        </div>
-      </div>
-
-      <div className="mt-3">
-        <p className="text-[11px] mb-1.5" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>RÉSULTAT</p>
-        <div className="flex flex-wrap gap-1.5 mb-1.5">{TRADE_RESULTS.map((r) => <TagButton key={r.key} active={(trade.resultStatus || "en_cours") === r.key} color={r.color} label={r.label} onClick={() => touch({ resultStatus: r.key })} />)}</div>
-        <input value={trade.result} onChange={(e) => touch({ result: e.target.value })} placeholder="Ex. +2.3R, -1R, +450$" className="bg-transparent outline-none text-sm w-full" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.textPrimary, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 7px" }} />
-      </div>
-
-      <div className="mt-3">
-        <p className="text-[11px] mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>COMMENTAIRE POST-TRADE (ajoute une capture via l'image)</p>
-        <RichContentEditor content={ensureContent(trade.postComment)} onChange={(c) => touch({ postComment: c })} refOptions={refOptions} onNavigateRef={onNavigateRef} placeholder="Thèse bonne, exécution mauvaise ? Débrief..." rows={2} />
-      </div>
-
-      {trade.updatedAt && <UpdatedBadge updatedAt={trade.updatedAt} />}
-    </div>
-  );
-}
-
-function TradesSection({ trades, onUpdate, onAdd, onDelete, refOptions, onNavigateRef }) {
-  return (
-    <div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{trades.map((t) => (<TradeCard key={t.id} trade={t} onUpdate={onUpdate} onDelete={() => onDelete(t.id)} refOptions={refOptions} onNavigateRef={onNavigateRef} />))}</div>
-      <button onClick={onAdd} className="flex items-center gap-1.5 text-sm mt-3 px-3 py-2 rounded-lg w-full justify-center" style={{ color: C.textSecondary, border: `1px dashed ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}><Plus size={14} /> Ajouter un trade</button>
     </div>
   );
 }
@@ -1007,7 +1064,7 @@ function TrashModal({ trash, trashLabelFor, onRestore, onPurge, onClose }) {
     </div>
   );
 }
-const TRASH_LABELS_STATIC = { note: "Note", watchlist: "Watchlist", driver: "Driver", instrument: "Thèse", trade: "Trade" };
+const TRASH_LABELS_STATIC = { note: "Note", watchlist: "Watchlist", driver: "Driver", instrument: "Thèse" };
 
 function ExportGroup({ title, items, selected, onToggle, onAll }) {
   return (
@@ -1039,8 +1096,20 @@ function daysAgo(iso) {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
 
-function OverviewSection({ theses, trades, onNavigate }) {
-  const allInstruments = ASSET_CLASS_DEFS.flatMap((cls) => (theses[cls.id]?.instruments || []).filter((i) => !i.archived).map((i) => ({ ...i, clsLabel: cls.label })));
+const REFLECTION_PROMPTS = [
+  "Quelle thèse n'as-tu pas remise en question depuis longtemps ?",
+  "Quel driver domine que tu n'as pas encore lié à une thèse ?",
+  "Si tu devais fermer une position aujourd'hui, laquelle et pourquoi ?",
+  "Quelle thèse repose sur un seul argument fragile ?",
+  "Qu'est-ce qui te ferait changer d'avis sur ta conviction la plus forte actuellement ?",
+  "Quelle donnée économique récente contredit une de tes thèses ?",
+  "Quel scénario n'as-tu pas encore envisagé dans ta vue globale ?",
+];
+
+function OverviewSection({ theses, onNavigate, onMarkReviewed }) {
+  const allInstruments = ASSET_CLASS_DEFS.flatMap((cls) => (theses[cls.id]?.instruments || []).filter((i) => !i.archived).map((i) => ({ ...i, clsId: cls.id, clsLabel: cls.label })));
+
+  const todayPrompt = REFLECTION_PROMPTS[Math.floor(Date.now() / 86400000) % REFLECTION_PROMPTS.length];
 
   const activeTheses = allInstruments
     .filter((i) => i.status === "active")
@@ -1055,7 +1124,14 @@ function OverviewSection({ theses, trades, onNavigate }) {
     .filter((i) => i.updatedAt && daysAgo(i.updatedAt) > FRESHNESS_DAYS)
     .sort((a, b) => daysAgo(b.updatedAt) - daysAgo(a.updatedAt));
 
-  const openTrades = trades.filter((t) => (t.resultStatus || "en_cours") === "en_cours");
+  const dueForReview = allInstruments
+    .filter((i) => {
+      const base = i.reviewedAt || i.createdAt;
+      if (!base) return false;
+      const dueAt = new Date(base).getTime() + (i.reviewIntervalDays || 7) * 86400000;
+      return Date.now() >= dueAt;
+    })
+    .sort((a, b) => new Date(a.reviewedAt || a.createdAt) - new Date(b.reviewedAt || b.createdAt));
 
   const Block = ({ title, children, isEmpty, empty }) => (
     <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
@@ -1066,6 +1142,25 @@ function OverviewSection({ theses, trades, onNavigate }) {
 
   return (
     <div>
+      <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: C.surfaceRaised, border: `1px solid ${C.gold}` }}>
+        <div className="flex items-center gap-2 mb-1">
+          <Star size={14} color={C.gold} />
+          <p className="text-[11px] uppercase tracking-wide" style={{ color: C.gold, fontFamily: "'IBM Plex Mono', monospace" }}>Question du jour</p>
+        </div>
+        <p className="text-sm" style={{ color: C.textPrimary, fontFamily: "'Fraunces', serif" }}>{todayPrompt}</p>
+      </div>
+
+      <Block title={`À relire aujourd'hui — ${dueForReview.length}`} isEmpty={dueForReview.length === 0} empty="Rien à relire pour l'instant.">
+        <div className="flex flex-col gap-1.5">
+          {dueForReview.map((i) => (
+            <div key={i.id} className="flex items-center justify-between text-sm px-2.5 py-1.5 rounded-md" style={{ border: `1px solid ${C.dove}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textPrimary }}>
+              <button onClick={() => onNavigate("thesis")} className="text-left flex-1">{i.clsLabel} · {i.symbol || "(sans nom)"}</button>
+              <button onClick={() => onMarkReviewed(i.clsId, i.id)} className="text-[11px] px-2 py-1 rounded-md ml-2" style={{ color: C.dove, border: `1px solid ${C.dove}`, fontFamily: "'IBM Plex Mono', monospace" }}>✓ Relu</button>
+            </div>
+          ))}
+        </div>
+      </Block>
+
       <Block title={`Thèses actives — ${activeTheses.length}`} isEmpty={activeTheses.length === 0} empty="Aucune thèse marquée « Active » pour l'instant.">
         <div className="flex flex-col gap-1.5">
           {activeTheses.map((i) => {
@@ -1101,21 +1196,11 @@ function OverviewSection({ theses, trades, onNavigate }) {
           ))}
         </div>
       </Block>
-
-      <Block title={`Trades en cours — ${openTrades.length}`} isEmpty={openTrades.length === 0} empty="Aucun trade en cours.">
-        <div className="flex flex-col gap-1.5">
-          {openTrades.map((t) => (
-            <button key={t.id} onClick={() => onNavigate("trades")} className="text-left text-xs px-2.5 py-1.5 rounded-md transition-colors hover:opacity-80" style={{ border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif", color: C.textSecondary }}>
-              {t.ticker || "(sans nom)"}
-            </button>
-          ))}
-        </div>
-      </Block>
     </div>
   );
 }
 
-function ExportModal({ selection, setSelection, drivers, theses, trades, notebook, autoBackups, onRestoreAutoBackup, setPrintMode, onClose }) {
+function ExportModal({ selection, setSelection, drivers, theses, notebook, autoBackups, onRestoreAutoBackup, setPrintMode, onClose }) {
   const toggle = (group, id) => setSelection((prev) => ({ ...prev, [group]: { ...prev[group], [id]: !prev[group][id] } }));
   const toggleGlobal = () => setSelection((prev) => ({ ...prev, global: !prev.global }));
   const selectAll = (group, ids, value) => setSelection((prev) => ({ ...prev, [group]: Object.fromEntries(ids.map((id) => [id, value])) }));
@@ -1137,7 +1222,6 @@ function ExportModal({ selection, setSelection, drivers, theses, trades, noteboo
         </label>
         <ExportGroup title="Drivers Macro" items={drivers.map((d) => ({ id: d.id, label: d.name || "(sans nom)" }))} selected={selection.drivers} onToggle={(id) => toggle("drivers", id)} onAll={(v) => selectAll("drivers", drivers.map((d) => d.id), v)} />
         <ExportGroup title="Thèse Macro par instrument" items={allInstruments.map((i) => ({ id: i.id, label: `${i.clsLabel} · ${i.symbol || "(sans nom)"}` }))} selected={selection.instruments} onToggle={(id) => toggle("instruments", id)} onAll={(v) => selectAll("instruments", allInstruments.map((i) => i.id), v)} />
-        <ExportGroup title="Trades" items={trades.map((t) => ({ id: t.id, label: t.ticker || "(sans nom)" }))} selected={selection.trades} onToggle={(id) => toggle("trades", id)} onAll={(v) => selectAll("trades", trades.map((t) => t.id), v)} />
         <ExportGroup title="Bloc-Note" items={notes.map((n) => ({ id: n.id, label: n.title || "(sans titre)" }))} selected={selection.notes} onToggle={(id) => toggle("notes", id)} onAll={(v) => selectAll("notes", notes.map((n) => n.id), v)} />
         <button onClick={() => { setPrintMode("export"); onClose(); setTimeout(() => window.print(), 200); }} className="w-full mt-3 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: C.gold, color: C.ink, fontFamily: "'IBM Plex Sans', sans-serif" }}>
           Générer l'aperçu d'impression
@@ -1161,11 +1245,10 @@ function ExportModal({ selection, setSelection, drivers, theses, trades, noteboo
   );
 }
 
-function PrintView({ selection, drivers, globalThesis, theses, trades, notebook }) {
+function PrintView({ selection, drivers, globalThesis, theses, notebook }) {
   const allInstruments = ASSET_CLASS_DEFS.flatMap((cls) => (theses[cls.id]?.instruments || []).map((inst) => ({ ...inst, clsLabel: cls.label })));
   const sDrivers = drivers.filter((d) => selection.drivers[d.id]);
   const sInstr = allInstruments.filter((i) => selection.instruments[i.id]);
-  const sTrades = trades.filter((t) => selection.trades[t.id]);
   const sNotes = (notebook?.notes || []).filter((n) => selection.notes && selection.notes[n.id]);
 
   return (
@@ -1198,25 +1281,11 @@ function PrintView({ selection, drivers, globalThesis, theses, trades, notebook 
               {i.createdAt && <p style={{ fontSize: "0.8rem", color: "#555" }}>Créée le {formatDate(i.createdAt)}</p>}
               {i.context && <p><em>Contexte :</em> {i.context}</p>}
               <p style={{ whiteSpace: "pre-wrap" }}>{i.content.text}</p>
-              {i.argumentsFor && <p><em>Pour :</em> {i.argumentsFor}</p>}
-              {i.argumentsAgainst && <p><em>Contre :</em> {i.argumentsAgainst}</p>}
+              {i.argumentsFor?.length > 0 && <p><em>Pour :</em> {argumentsSummary(i.argumentsFor)}</p>}
+              {i.argumentsAgainst?.length > 0 && <p><em>Contre :</em> {argumentsSummary(i.argumentsAgainst)}</p>}
               {i.catalysts && <p><em>Catalyseurs :</em> {i.catalysts}</p>}
               {i.risks && <p><em>Risques :</em> {i.risks}</p>}
-            </div>
-          ))}
-        </section>
-      )}
-      {sTrades.length > 0 && (
-        <section style={{ marginBottom: "1.5rem" }}>
-          <h2 style={{ fontSize: "1.1rem", borderBottom: "1px solid #ccc", paddingBottom: 4 }}>Trades</h2>
-          {sTrades.map((t) => (
-            <div key={t.id} style={{ marginBottom: 12 }}>
-              <strong>{t.ticker}</strong> — {t.direction || ""} · {t.conviction || ""} · {t.horizon || ""}
-              <p><em>Raisons :</em> {t.reasons?.text}</p>
-              <p><em>Attentes :</em> {t.expectations}</p>
-              <p style={{ fontSize: "0.85rem", color: "#555" }}>Entrée {t.entry || "—"} · Stop {t.stop || "—"} · TP {t.takeProfit || "—"} · Taille {t.size || "—"} · Risque {t.riskPercent || "—"}</p>
-              <p><em>Résultat :</em> {TRADE_RESULTS.find((r) => r.key === t.resultStatus)?.label || ""} {t.result ? `(${t.result})` : ""}</p>
-              {t.postComment?.text && <p><em>Post-trade :</em> {t.postComment.text}</p>}
+              {i.blindSpot && <p><em>Angle mort :</em> {i.blindSpot}</p>}
             </div>
           ))}
         </section>
@@ -1246,7 +1315,7 @@ function flattenReport(drivers) {
   return [{ type: "global", id: "global" }, ...sortedDrivers.map((d) => ({ type: "driver", id: d.id }))];
 }
 
-function ThesisReadingBody({ inst, dark }) {
+function ThesisReadingBody({ inst, dark, onJumpToInstrument }) {
   const dir = DIRECTIONS.find((d) => d.key === inst.direction);
   const stat = THESIS_STATUSES.find((s) => s.key === inst.status);
   const hor = HORIZONS.find((h) => h.key === inst.horizon);
@@ -1260,6 +1329,22 @@ function ThesisReadingBody({ inst, dark }) {
         <p style={{ whiteSpace: "pre-wrap", color: fgSoft, fontFamily: "'IBM Plex Sans', sans-serif", lineHeight: 1.7 }}>{text}</p>
       </div>
     ) : null;
+  const ArgSection = ({ title, items }) =>
+    items && items.length > 0 ? (
+      <div style={{ marginBottom: "1.25rem" }}>
+        <p style={{ fontSize: "0.7rem", letterSpacing: "0.05em", textTransform: "uppercase", color: fgFaint, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 4 }}>{title}</p>
+        <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+          {items.map((it) => (
+            <li key={it.id} style={{ color: it.checked ? fgFaint : fgSoft, textDecoration: it.checked ? "line-through" : "none", marginBottom: 4, fontFamily: "'IBM Plex Sans', sans-serif", lineHeight: 1.6 }}>
+              {it.text}{it.strength && <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "0.7rem", color: fgFaint }}> · {it.strength}</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+
+  const linkedRefs = (inst.content?.refs || []).filter((r) => r.type === "instrument");
+  const isEmpty = !inst.context && !inst.content?.text && !(inst.argumentsFor?.length) && !(inst.argumentsAgainst?.length) && !inst.catalysts && !inst.risks && !inst.blindSpot;
 
   return (
     <div>
@@ -1278,12 +1363,28 @@ function ThesisReadingBody({ inst, dark }) {
 
       <Section title="Contexte" text={inst.context} />
       <Section title="Ma thèse" text={inst.content?.text} />
-      <Section title="Arguments en faveur" text={inst.argumentsFor} />
-      <Section title="Arguments contre" text={inst.argumentsAgainst} />
+      <ArgSection title="Arguments en faveur" items={inst.argumentsFor} />
+      <ArgSection title="Arguments contre" items={inst.argumentsAgainst} />
       <Section title="Catalyseurs" text={inst.catalysts} />
       <Section title="Risques d'invalidation" text={inst.risks} />
+      <Section title="Angle mort — ce qui me ferait changer d'avis" text={inst.blindSpot} />
 
-      {!inst.context && !inst.content?.text && !inst.argumentsFor && !inst.argumentsAgainst && !inst.catalysts && !inst.risks && (
+      {linkedRefs.length > 0 && (
+        <div style={{ marginBottom: "1.25rem" }}>
+          <p style={{ fontSize: "0.7rem", letterSpacing: "0.05em", textTransform: "uppercase", color: fgFaint, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 4 }}>Thèses liées</p>
+          <div className="flex flex-wrap gap-1.5">
+            {linkedRefs.map((r) =>
+              onJumpToInstrument ? (
+                <button key={r.id} onClick={() => onJumpToInstrument(r.id)} className="px-2 py-0.5 rounded-full text-[11px]" style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.neutral, border: `1px solid ${C.neutral}` }}>@{r.label}</button>
+              ) : (
+                <span key={r.id} className="px-2 py-0.5 rounded-full text-[11px]" style={{ fontFamily: "'IBM Plex Mono', monospace", color: fgFaint, border: `1px solid ${fgFaint}` }}>@{r.label}</span>
+              )
+            )}
+          </div>
+        </div>
+      )}
+
+      {isEmpty && (
         <p style={{ color: fgFaint, fontFamily: "'IBM Plex Sans', sans-serif", fontStyle: "italic" }}>Cette thèse est encore vide.</p>
       )}
     </div>
@@ -1357,7 +1458,7 @@ function ReadingView({ readingMode, theses, drivers, globalThesis, onClose, onNa
 
       <div className="flex-1 overflow-y-auto px-6 py-10 flex justify-center">
         <div className="w-full max-w-xl">
-          {isReport ? <ReportReadingBody item={current} globalThesis={globalThesis} drivers={drivers} dark /> : <ThesisReadingBody inst={current} dark />}
+          {isReport ? <ReportReadingBody item={current} globalThesis={globalThesis} drivers={drivers} dark /> : <ThesisReadingBody inst={current} dark onJumpToInstrument={(refId) => { const target = flattenInstruments(theses).find((i) => i.id === refId); if (target) onNavigate({ kind: "instrument", clsId: target.clsId, instId: target.id }); }} />}
         </div>
       </div>
 
@@ -1388,6 +1489,135 @@ function ReadingPrintView({ readingMode, theses, drivers, globalThesis }) {
   );
 }
 
+// ================= COMPARAISON DE THÈSES =================
+function CompareSelectModal({ theses, onCompare, onClose }) {
+  const list = flattenInstruments(theses);
+  const [a, setA] = useState("");
+  const [b, setB] = useState("");
+  return (
+    <div className="export-modal fixed inset-0 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.6)", zIndex: 50 }}>
+      <div className="rounded-xl p-5 w-full max-w-sm" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: C.textPrimary, fontSize: "1.1rem" }}>Comparer deux thèses</h3>
+          <button onClick={onClose}><X size={16} color={C.textFaint} /></button>
+        </div>
+        {["Thèse A", "Thèse B"].map((label, i) => (
+          <div key={label} className="mb-3">
+            <p className="text-[11px] uppercase tracking-wide mb-1" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{label}</p>
+            <select
+              value={i === 0 ? a : b}
+              onChange={(e) => (i === 0 ? setA(e.target.value) : setB(e.target.value))}
+              className="w-full text-sm px-2 py-1.5 rounded-md bg-transparent outline-none"
+              style={{ color: C.textPrimary, border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}
+            >
+              <option value="" style={{ color: "#000" }}>Choisir un instrument...</option>
+              {list.map((inst) => (
+                <option key={inst.id} value={inst.id} style={{ color: "#000" }}>{inst.clsLabel} · {inst.symbol || "(sans nom)"}</option>
+              ))}
+            </select>
+          </div>
+        ))}
+        <button
+          onClick={() => a && b && onCompare(a, b)}
+          disabled={!a || !b}
+          className="w-full mt-1 py-2 rounded-lg text-sm font-medium"
+          style={{ backgroundColor: a && b ? C.gold : C.border, color: a && b ? C.ink : C.textFaint, fontFamily: "'IBM Plex Sans', sans-serif" }}
+        >
+          Comparer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CompareSummaryRow({ label, a, b }) {
+  return (
+    <div className="grid grid-cols-2 gap-4 py-1.5" style={{ borderBottom: `1px solid ${C.border}` }}>
+      <div><span style={{ color: C.textFaint }}>{label} — </span>{a}</div>
+      <div>{b}</div>
+    </div>
+  );
+}
+
+function compareSummaryData(inst) {
+  if (!inst) return { direction: "—", conviction: "—", horizon: "—", status: "—" };
+  return {
+    direction: DIRECTIONS.find((d) => d.key === inst.direction)?.label || "—",
+    conviction: inst.conviction ? `${inst.conviction}/10` : "—",
+    horizon: HORIZONS.find((h) => h.key === inst.horizon)?.label || "—",
+    status: THESIS_STATUSES.find((s) => s.key === inst.status)?.label || "—",
+  };
+}
+
+function CompareView({ theses, idA, idB, onChangeA, onChangeB, onClose, onPrint }) {
+  const list = flattenInstruments(theses);
+  const instA = list.find((i) => i.id === idA);
+  const instB = list.find((i) => i.id === idB);
+  if (!instA || !instB) return null;
+  const sumA = compareSummaryData(instA);
+  const sumB = compareSummaryData(instB);
+
+  const Picker = ({ value, onChange }) => (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="text-xs px-2 py-1 rounded-md bg-transparent outline-none" style={{ color: C.textSecondary, border: `1px solid ${C.border}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+      {list.map((inst) => (<option key={inst.id} value={inst.id} style={{ color: "#000" }}>{inst.clsLabel} · {inst.symbol || "(sans nom)"}</option>))}
+    </select>
+  );
+
+  return (
+    <div className="no-print fixed inset-0 flex flex-col" style={{ backgroundColor: C.ink, zIndex: 60 }}>
+      <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
+        <span className="flex items-center gap-1.5 text-xs" style={{ color: C.gold, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          <Compass size={13} /> Comparaison de thèses
+        </span>
+        <div className="flex items-center gap-3">
+          <button onClick={onPrint} className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md" style={{ color: C.gold, border: `1px solid ${C.gold}`, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+            <Download size={12} /> Export PDF
+          </button>
+          <button onClick={onClose} style={{ color: C.textFaint }}><X size={18} /></button>
+        </div>
+      </div>
+
+      <div className="px-6 py-4" style={{ borderBottom: `1px solid ${C.border}` }}>
+        <div className="grid grid-cols-2 gap-4 text-xs" style={{ color: C.textPrimary, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          <Picker value={idA} onChange={onChangeA} />
+          <Picker value={idB} onChange={onChangeB} />
+        </div>
+        <div className="mt-2 text-xs" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          <CompareSummaryRow label="Direction" a={sumA.direction} b={sumB.direction} />
+          <CompareSummaryRow label="Conviction" a={sumA.conviction} b={sumB.conviction} />
+          <CompareSummaryRow label="Horizon" a={sumA.horizon} b={sumB.horizon} />
+          <CompareSummaryRow label="Statut" a={sumA.status} b={sumB.status} />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-6 py-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+          <ThesisReadingBody inst={instA} dark />
+          <ThesisReadingBody inst={instB} dark />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ComparePrintView({ theses, idA, idB }) {
+  const list = flattenInstruments(theses);
+  const instA = list.find((i) => i.id === idA);
+  const instB = list.find((i) => i.id === idB);
+  if (!instA || !instB) return null;
+  return (
+    <div className="print-view" style={{ backgroundColor: "#fff", padding: "2.5rem", fontFamily: "Georgia, serif" }}>
+      <h1 style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: "1.3rem", color: "#111", marginBottom: 16 }}>Comparaison de thèses</h1>
+      <div style={{ marginBottom: 32 }}>
+        <ThesisReadingBody inst={instA} />
+      </div>
+      <div style={{ borderTop: "2px solid #111", paddingTop: 32 }}>
+        <ThesisReadingBody inst={instB} />
+      </div>
+    </div>
+  );
+}
+
 // ---------- Main App ----------
 function Dashboard({ userEmail, onLogout }) {
   const [activeTab, setActiveTab] = useState("overview");
@@ -1395,7 +1625,6 @@ function Dashboard({ userEmail, onLogout }) {
   const [drivers, setDrivers] = useState([]);
   const [globalThesis, setGlobalThesis] = useState({ content: emptyContent(), updatedAt: null, history: [] });
   const [theses, setTheses] = useState(seedTheses());
-  const [trades, setTrades] = useState([]);
   const [watchlists, setWatchlists] = useState([]);
   const [autoBackups, setAutoBackups] = useState([]);
   const [trash, setTrash] = useState([]);
@@ -1403,9 +1632,11 @@ function Dashboard({ userEmail, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState("idle");
   const [showExport, setShowExport] = useState(false);
-  const [exportSelection, setExportSelection] = useState({ global: false, drivers: {}, instruments: {}, trades: {}, notes: {} });
+  const [exportSelection, setExportSelection] = useState({ global: false, drivers: {}, instruments: {}, notes: {} });
   const [readingMode, setReadingMode] = useState(null);
   const [printMode, setPrintMode] = useState("export");
+  const [showCompareSelect, setShowCompareSelect] = useState(false);
+  const [compareIds, setCompareIds] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const saveTimeouts = useRef({});
   const fileInputRef = useRef(null);
@@ -1413,12 +1644,11 @@ function Dashboard({ userEmail, onLogout }) {
   useEffect(() => {
     (async () => {
       try {
-        const [nb, d, gt, th, tr, wl, ab, tb] = await Promise.allSettled([
+        const [nb, d, gt, th, wl, ab, tb] = await Promise.allSettled([
           storageGet("notebook-data-v1"),
           storageGet("drivers-data"),
           storageGet("global-thesis-data-v2"),
           storageGet("theses-data-v2"),
-          storageGet("trades-data-v2"),
           storageGet("watchlists-data-v1"),
           storageGet("autobackup-index"),
           storageGet("trash-data-v1"),
@@ -1429,10 +1659,13 @@ function Dashboard({ userEmail, onLogout }) {
           const parsed = JSON.parse(gt.value.value);
           setGlobalThesis({ content: ensureContent(parsed.content), updatedAt: parsed.updatedAt || null, history: parsed.history || [] });
         }
-        if (th.status === "fulfilled" && th.value?.value) setTheses(JSON.parse(th.value.value));
-        if (tr.status === "fulfilled" && tr.value?.value) {
-          const parsed = JSON.parse(tr.value.value);
-          setTrades(parsed.map((t) => ({ ...t, reasons: ensureContent(t.reasons) })));
+        if (th.status === "fulfilled" && th.value?.value) {
+          const parsedTheses = JSON.parse(th.value.value);
+          const normalized = {};
+          Object.keys(parsedTheses).forEach((clsId) => {
+            normalized[clsId] = { instruments: (parsedTheses[clsId].instruments || []).map(normalizeInstrument) };
+          });
+          setTheses(normalized);
         }
         if (wl.status === "fulfilled" && wl.value?.value) setWatchlists(JSON.parse(wl.value.value));
         if (ab.status === "fulfilled" && ab.value?.value) setAutoBackups(JSON.parse(ab.value.value));
@@ -1464,13 +1697,12 @@ function Dashboard({ userEmail, onLogout }) {
     }, 400);
   }, []);
 
-  const TRASH_LABELS = { note: "Note", watchlist: "Watchlist", driver: "Driver", instrument: "Thèse", trade: "Trade" };
+  const TRASH_LABELS = { note: "Note", watchlist: "Watchlist", driver: "Driver", instrument: "Thèse" };
   const trashLabelFor = (entry) => {
     if (entry.type === "note") return entry.payload.title || "(sans titre)";
     if (entry.type === "watchlist") return entry.payload.name || "(sans nom)";
     if (entry.type === "driver") return entry.payload.name || "(sans nom)";
     if (entry.type === "instrument") return entry.payload.symbol || "(sans nom)";
-    if (entry.type === "trade") return entry.payload.ticker || "(sans nom)";
     return "(élément)";
   };
   const trashItem = (type, payload, extra = {}) => {
@@ -1489,7 +1721,7 @@ function Dashboard({ userEmail, onLogout }) {
       const clsId = entry.extra.clsId;
       const next = { ...theses, [clsId]: { instruments: [...theses[clsId].instruments, entry.payload] } };
       setTheses(next); persist("theses-data-v2", next);
-    } else if (entry.type === "trade") { const next = [...trades, entry.payload]; setTrades(next); persist("trades-data-v2", next); }
+    }
     const remaining = trash.filter((e) => e.id !== entryId);
     setTrash(remaining); persist("trash-data-v1", remaining);
   };
@@ -1498,7 +1730,7 @@ function Dashboard({ userEmail, onLogout }) {
     setTrash(remaining); persist("trash-data-v1", remaining);
   };
   const stateRef = useRef();
-  stateRef.current = { notebook, drivers, globalThesis, theses, trades, watchlists };
+  stateRef.current = { notebook, drivers, globalThesis, theses, watchlists };
   const autoBackupsRef = useRef(autoBackups);
   useEffect(() => { autoBackupsRef.current = autoBackups; }, [autoBackups]);
 
@@ -1532,8 +1764,7 @@ function Dashboard({ userEmail, onLogout }) {
       if (data.notebook) { setNotebook(data.notebook); persist("notebook-data-v1", data.notebook); }
       if (data.drivers) { setDrivers(data.drivers); persist("drivers-data", data.drivers); }
       if (data.globalThesis) { setGlobalThesis(data.globalThesis); persist("global-thesis-data-v2", data.globalThesis); }
-      if (data.theses) { setTheses(data.theses); persist("theses-data-v2", data.theses); }
-      if (data.trades) { setTrades(data.trades); persist("trades-data-v2", data.trades); }
+      if (data.theses) { const norm = {}; Object.keys(data.theses).forEach((c) => { norm[c] = { instruments: (data.theses[c].instruments || []).map(normalizeInstrument) }; }); setTheses(norm); persist("theses-data-v2", norm); }
       if (data.watchlists) { setWatchlists(data.watchlists); persist("watchlists-data-v1", data.watchlists); }
       window.alert("Sauvegarde restaurée.");
     } catch (err) {
@@ -1635,11 +1866,14 @@ function Dashboard({ userEmail, onLogout }) {
             conviction: null,
             horizon: null,
             context: "",
-            argumentsFor: "",
-            argumentsAgainst: "",
+            argumentsFor: [],
+            argumentsAgainst: [],
             catalysts: "",
             risks: "",
+            blindSpot: "",
             tags: [],
+            reviewedAt: null,
+            reviewIntervalDays: 7,
             originalSnapshot: null,
             createdAt: new Date().toISOString(),
             updatedAt: null,
@@ -1655,42 +1889,17 @@ function Dashboard({ userEmail, onLogout }) {
     const next = { ...theses, [clsId]: { instruments: theses[clsId].instruments.filter((i) => i.id !== instId) } };
     setTheses(next); persist("theses-data-v2", next);
   };
-
-  const addTrade = () => {
-    const next = [
-      ...trades,
-      {
-        id: uid(),
-        ticker: "",
-        assetClass: "",
-        direction: null,
-        conviction: null,
-        horizon: null,
-        reasons: emptyContent(),
-        expectations: "",
-        tags: [],
-        entry: "",
-        stop: "",
-        takeProfit: "",
-        size: "",
-        riskPercent: "",
-        resultStatus: "en_cours",
-        result: "",
-        postComment: emptyContent(),
-        updatedAt: new Date().toISOString(),
-      },
-    ];
-    setTrades(next); persist("trades-data-v2", next);
-  };
-  const updateTrade = (updated) => { const next = trades.map((t) => (t.id === updated.id ? updated : t)); setTrades(next); persist("trades-data-v2", next); };
-  const deleteTrade = (id) => {
-    const trade = trades.find((t) => t.id === id);
-    if (trade) trashItem("trade", trade);
-    const next = trades.filter((t) => t.id !== id); setTrades(next); persist("trades-data-v2", next);
+  const markReviewed = (clsId, instId) => {
+    const inst = theses[clsId].instruments.find((i) => i.id === instId);
+    if (!inst) return;
+    const nextInterval = Math.min((inst.reviewIntervalDays || 7) * 2, REVIEW_MAX_INTERVAL_DAYS);
+    const updated = { ...inst, reviewedAt: new Date().toISOString(), reviewIntervalDays: nextInterval };
+    const next = { ...theses, [clsId]: { instruments: theses[clsId].instruments.map((i) => (i.id === instId ? updated : i)) } };
+    setTheses(next); persist("theses-data-v2", next);
   };
 
   const exportBackup = () => {
-    const payload = { notebook, drivers, globalThesis, theses, trades, watchlists, exportedAt: new Date().toISOString() };
+    const payload = { notebook, drivers, globalThesis, theses, watchlists, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1708,8 +1917,7 @@ function Dashboard({ userEmail, onLogout }) {
         if (data.notebook) { setNotebook(data.notebook); persist("notebook-data-v1", data.notebook); }
         if (data.drivers) { setDrivers(data.drivers); persist("drivers-data", data.drivers); }
         if (data.globalThesis) { setGlobalThesis(data.globalThesis); persist("global-thesis-data-v2", data.globalThesis); }
-        if (data.theses) { setTheses(data.theses); persist("theses-data-v2", data.theses); }
-        if (data.trades) { setTrades(data.trades); persist("trades-data-v2", data.trades); }
+        if (data.theses) { const norm = {}; Object.keys(data.theses).forEach((c) => { norm[c] = { instruments: (data.theses[c].instruments || []).map(normalizeInstrument) }; }); setTheses(norm); persist("theses-data-v2", norm); }
         if (data.watchlists) { setWatchlists(data.watchlists); persist("watchlists-data-v1", data.watchlists); }
         window.alert("Sauvegarde importée avec succès.");
       } catch (err) {
@@ -1722,14 +1930,15 @@ function Dashboard({ userEmail, onLogout }) {
   const refOptions = [
     ...drivers.filter((d) => d.name).map((d) => ({ id: d.id, type: "driver", label: `Driver · ${d.name}` })),
     ...ASSET_CLASS_DEFS.flatMap((cls) => (theses[cls.id]?.instruments || []).filter((i) => i.symbol).map((i) => ({ id: i.id, type: "instrument", label: `Thèse · ${cls.label} · ${i.symbol}` }))),
-    ...trades.filter((t) => t.ticker).map((t) => ({ id: t.id, type: "trade", label: `Trade · ${t.ticker}` })),
   ];
-  const onNavigateRef = (type) => setActiveTab(type === "driver" ? "drivers" : type === "instrument" ? "thesis" : "trades");
+  const onNavigateRef = (type) => setActiveTab(type === "driver" ? "drivers" : "thesis");
 
   const openInstrumentReading = (clsId, instId) => setReadingMode({ kind: "instrument", clsId, instId });
   const openReportReading = (posId) => setReadingMode({ kind: "report", posId });
   const closeReading = () => setReadingMode(null);
   const printReading = () => { setPrintMode("reading"); setTimeout(() => window.print(), 150); };
+  const startCompare = (a, b) => { setCompareIds({ a, b }); setShowCompareSelect(false); };
+  const printCompare = () => { setPrintMode("compare"); setTimeout(() => window.print(), 150); };
 
   const activeItem = NAV_ITEMS.find((n) => n.id === activeTab);
 
@@ -1746,20 +1955,14 @@ function Dashboard({ userEmail, onLogout }) {
       const hit = (i.symbol && i.symbol.toLowerCase().includes(q))
         || (i.content?.text || "").toLowerCase().includes(q)
         || (i.context || "").toLowerCase().includes(q)
-        || (i.argumentsFor || "").toLowerCase().includes(q)
-        || (i.argumentsAgainst || "").toLowerCase().includes(q)
+        || argumentsSummary(i.argumentsFor).toLowerCase().includes(q)
+        || argumentsSummary(i.argumentsAgainst).toLowerCase().includes(q)
+        || (i.blindSpot || "").toLowerCase().includes(q)
         || (i.catalysts || "").toLowerCase().includes(q)
         || (i.risks || "").toLowerCase().includes(q)
         || (i.tags || []).some((t) => t.toLowerCase().includes(q));
       if (hit) results.push({ tab: "thesis", label: `Thèse · ${cls.label} · ${i.symbol || "(sans nom)"}` });
     }));
-    trades.forEach((t) => {
-      const hit = (t.ticker && t.ticker.toLowerCase().includes(q))
-        || (t.reasons?.text || "").toLowerCase().includes(q)
-        || (t.expectations || "").toLowerCase().includes(q)
-        || (t.tags || []).some((tg) => tg.toLowerCase().includes(q));
-      if (hit) results.push({ tab: "trades", label: `Trade · ${t.ticker || "(sans nom)"}` });
-    });
     watchlists.forEach((w) => w.items.forEach((i) => { if (i.symbol && i.symbol.toLowerCase().includes(q)) results.push({ tab: "watchlist", label: `Watchlist · ${w.name} · ${i.symbol}` }); }));
     (notebook.notes || []).forEach((n) => {
       const hit = (n.title && n.title.toLowerCase().includes(q))
@@ -1773,20 +1976,24 @@ function Dashboard({ userEmail, onLogout }) {
     overview: "Ce qui mérite ton attention, agrégé automatiquement depuis tout le desk.",
     drivers: "Les forces qui font bouger le marché en ce moment — et laquelle domine.",
     thesis: "Ta lecture macro, par instrument et pour l'ensemble des marchés.",
-    trades: "Chaque trade, sa thèse fondamentale, ses raisons et tes attentes.",
     watchlist: "Tes propres listes d'instruments à surveiller, remplies comme tu veux.",
     notebook: "Tes notes libres — dossiers, tags, checklists, tout ce que tu veux garder sous la main.",
   };
 
   return (
     <div className="w-full min-h-screen" style={{ backgroundColor: C.ink }}>
-      <style>{FONTS + PRINT_CSS}</style>
+      <style>{FONTS + GLOBAL_POLISH + PRINT_CSS}</style>
 
       <div className="app-shell flex min-h-screen">
-        <aside className="w-56 flex-shrink-0 flex flex-col py-6 px-3" style={{ backgroundColor: C.surface, borderRight: `1px solid ${C.border}` }}>
-          <div className="px-2 mb-6">
-            <h1 style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, color: C.textPrimary, fontSize: "1.05rem", lineHeight: 1.2 }}>Desk Macro</h1>
-            <p className="text-[11px] mt-0.5" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>analyse fondamentale</p>
+        <aside className="w-56 flex-shrink-0 flex flex-col py-6 px-3" style={{ backgroundColor: C.surface, borderRight: `1px solid ${C.border}`, boxShadow: "4px 0 16px rgba(0,0,0,0.25)", zIndex: 1 }}>
+          <div className="px-2 mb-6 flex items-center gap-2.5">
+            <div className="flex items-center justify-center flex-shrink-0" style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: C.surfaceRaised, border: `1px solid ${C.gold}` }}>
+              <span style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, color: C.gold, fontSize: "0.95rem" }}>D</span>
+            </div>
+            <div>
+              <h1 style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, color: C.textPrimary, fontSize: "1.05rem", lineHeight: 1.2 }}>Desk Macro</h1>
+              <p className="text-[11px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>analyse fondamentale</p>
+            </div>
           </div>
 
           <div className="px-2 mb-3 relative">
@@ -1820,8 +2027,19 @@ function Dashboard({ userEmail, onLogout }) {
               const Icon = item.icon;
               const active = activeTab === item.id;
               return (
-                <button key={item.id} onClick={() => setActiveTab(item.id)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-colors" style={{ fontFamily: "'IBM Plex Sans', sans-serif", backgroundColor: active ? C.surfaceRaised : "transparent", color: active ? C.textPrimary : C.textSecondary }}>
-                  <Icon size={16} strokeWidth={1.75} /> <span className="flex-1">{item.label}</span>
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left relative"
+                  style={{
+                    fontFamily: "'IBM Plex Sans', sans-serif",
+                    backgroundColor: active ? C.surfaceRaised : "transparent",
+                    color: active ? C.textPrimary : C.textSecondary,
+                    borderLeft: active ? `2px solid ${C.gold}` : "2px solid transparent",
+                    paddingLeft: active ? "8px" : "10px",
+                  }}
+                >
+                  <Icon size={16} strokeWidth={1.75} color={active ? C.gold : undefined} /> <span className="flex-1">{item.label}</span>
                 </button>
               );
             })}
@@ -1855,17 +2073,15 @@ function Dashboard({ userEmail, onLogout }) {
 
         <main className="flex-1 px-8 py-6 overflow-y-auto">
           <div className="max-w-4xl">
-            <SectionHeading title={activeItem.label} subtitle={subtitles[activeTab]} />
+            <SectionHeading title={activeItem.label} subtitle={subtitles[activeTab]} icon={activeItem.icon} />
             {loading ? (
               <div className="flex items-center gap-2 mt-10" style={{ color: C.textFaint }}><Loader2 size={16} className="animate-spin" /> chargement...</div>
             ) : activeTab === "overview" ? (
-              <OverviewSection theses={theses} trades={trades} onNavigate={setActiveTab} />
+              <OverviewSection theses={theses} onNavigate={setActiveTab} onMarkReviewed={markReviewed} />
             ) : activeTab === "drivers" ? (
               <DriversSection drivers={drivers} onUpdate={updateDriver} onAdd={addDriver} onDelete={deleteDriver} onSetMain={setMainDriver} onOpenReading={openReportReading} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "thesis" ? (
-              <ThesisSection globalThesis={globalThesis} onUpdateGlobal={updateGlobalThesis} onSnapshotGlobal={snapshotGlobalThesis} onUpdateGlobalHistoryEntry={updateGlobalThesisHistoryEntry} onDeleteGlobalHistoryEntry={deleteGlobalThesisHistoryEntry} theses={theses} onUpdateInstrument={updateInstrument} onAddInstrument={addInstrument} onDeleteInstrument={deleteInstrument} onOpenInstrumentReading={openInstrumentReading} onOpenGlobalReading={() => openReportReading("global")} refOptions={refOptions} onNavigateRef={onNavigateRef} />
-            ) : activeTab === "trades" ? (
-              <TradesSection trades={trades} onUpdate={updateTrade} onAdd={addTrade} onDelete={deleteTrade} refOptions={refOptions} onNavigateRef={onNavigateRef} />
+              <ThesisSection globalThesis={globalThesis} onUpdateGlobal={updateGlobalThesis} onSnapshotGlobal={snapshotGlobalThesis} onUpdateGlobalHistoryEntry={updateGlobalThesisHistoryEntry} onDeleteGlobalHistoryEntry={deleteGlobalThesisHistoryEntry} theses={theses} onUpdateInstrument={updateInstrument} onAddInstrument={addInstrument} onDeleteInstrument={deleteInstrument} onOpenInstrumentReading={openInstrumentReading} onOpenGlobalReading={() => openReportReading("global")} onOpenCompare={() => setShowCompareSelect(true)} refOptions={refOptions} onNavigateRef={onNavigateRef} />
             ) : activeTab === "watchlist" ? (
               <WatchlistSection watchlists={watchlists} onUpdate={updateWatchlist} onAdd={addWatchlist} onDelete={deleteWatchlist} />
             ) : (
@@ -1875,11 +2091,24 @@ function Dashboard({ userEmail, onLogout }) {
         </main>
       </div>
 
-      {printMode === "export" && <PrintView selection={exportSelection} drivers={drivers} globalThesis={globalThesis} theses={theses} trades={trades} notebook={notebook} />}
-      {showExport && <ExportModal selection={exportSelection} setSelection={setExportSelection} drivers={drivers} theses={theses} trades={trades} notebook={notebook} autoBackups={autoBackups} onRestoreAutoBackup={restoreAutoBackup} setPrintMode={setPrintMode} onClose={() => setShowExport(false)} />}
+      {printMode === "export" && <PrintView selection={exportSelection} drivers={drivers} globalThesis={globalThesis} theses={theses} notebook={notebook} />}
+      {showExport && <ExportModal selection={exportSelection} setSelection={setExportSelection} drivers={drivers} theses={theses} notebook={notebook} autoBackups={autoBackups} onRestoreAutoBackup={restoreAutoBackup} setPrintMode={setPrintMode} onClose={() => setShowExport(false)} />}
       {showTrash && <TrashModal trash={trash} trashLabelFor={trashLabelFor} onRestore={restoreFromTrash} onPurge={purgeFromTrash} onClose={() => setShowTrash(false)} />}
       <ReadingView readingMode={readingMode} theses={theses} drivers={drivers} globalThesis={globalThesis} onClose={closeReading} onNavigate={setReadingMode} onPrint={printReading} />
       {printMode === "reading" && <ReadingPrintView readingMode={readingMode} theses={theses} drivers={drivers} globalThesis={globalThesis} />}
+      {showCompareSelect && <CompareSelectModal theses={theses} onCompare={startCompare} onClose={() => setShowCompareSelect(false)} />}
+      {compareIds && (
+        <CompareView
+          theses={theses}
+          idA={compareIds.a}
+          idB={compareIds.b}
+          onChangeA={(id) => setCompareIds({ ...compareIds, a: id })}
+          onChangeB={(id) => setCompareIds({ ...compareIds, b: id })}
+          onClose={() => setCompareIds(null)}
+          onPrint={printCompare}
+        />
+      )}
+      {printMode === "compare" && compareIds && <ComparePrintView theses={theses} idA={compareIds.a} idB={compareIds.b} />}
     </div>
   );
 }
@@ -1890,7 +2119,7 @@ function LoginScreen({ onLogin, error, loading }) {
   const [password, setPassword] = useState("");
   return (
     <div className="w-full min-h-screen flex items-center justify-center" style={{ backgroundColor: C.ink }}>
-      <style>{FONTS}</style>
+      <style>{FONTS + GLOBAL_POLISH}</style>
       <form
         onSubmit={(e) => { e.preventDefault(); onLogin(email, password); }}
         className="rounded-xl p-6 w-full max-w-xs"
@@ -1947,8 +2176,12 @@ export default function App() {
 
   if (checking) {
     return (
-      <div className="w-full min-h-screen flex items-center justify-center" style={{ backgroundColor: C.ink }}>
-        <Loader2 size={20} className="animate-spin" color={C.textFaint} />
+      <div className="w-full min-h-screen flex flex-col items-center justify-center gap-3" style={{ backgroundColor: C.ink }}>
+        <style>{FONTS}</style>
+        <div className="flex items-center justify-center" style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: C.surfaceRaised, border: `1px solid ${C.gold}` }}>
+          <span style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, color: C.gold, fontSize: "1.15rem" }}>D</span>
+        </div>
+        <Loader2 size={16} className="animate-spin" color={C.textFaint} />
       </div>
     );
   }
