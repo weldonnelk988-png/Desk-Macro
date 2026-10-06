@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Compass, ScrollText, ChevronUp, Plus, X, ChevronDown, ChevronRight, Loader2, Star, Globe2, Download, Link2, Image as ImageIcon, Search, LogOut, Eye, AlertTriangle, StickyNote, Folder, Archive, Trash2, RotateCcw, Maximize2 } from "lucide-react";
+import { Compass, ScrollText, ChevronUp, Plus, X, ChevronDown, ChevronRight, Loader2, Star, Globe2, Download, Link2, Image as ImageIcon, Search, LogOut, Eye, AlertTriangle, StickyNote, Folder, Archive, Trash2, RotateCcw, Maximize2, Menu } from "lucide-react";
 import { storageGet, storageSet } from "./storage";
 import { auth } from "./firebase";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
@@ -50,6 +50,10 @@ button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px rgba(196,166,97,0.55);
   border-radius: 6px;
+}
+html, body { overflow-x: hidden; }
+@media (max-width: 767px) {
+  input, textarea, select { font-size: 16px !important; }
 }
 `;
 
@@ -1636,6 +1640,7 @@ function Dashboard({ userEmail, onLogout }) {
   const [readingMode, setReadingMode] = useState(null);
   const [printMode, setPrintMode] = useState("export");
   const [showCompareSelect, setShowCompareSelect] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [compareIds, setCompareIds] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const saveTimeouts = useRef({});
@@ -1984,8 +1989,34 @@ function Dashboard({ userEmail, onLogout }) {
     <div className="w-full min-h-screen" style={{ backgroundColor: C.ink }}>
       <style>{FONTS + GLOBAL_POLISH + PRINT_CSS}</style>
 
+      <div
+        className="app-shell md:hidden flex items-center justify-between px-4 py-3 sticky top-0"
+        style={{ backgroundColor: C.surface, borderBottom: `1px solid ${C.border}`, zIndex: 20 }}
+      >
+        <button onClick={() => setMobileNavOpen(true)} className="flex items-center gap-2" style={{ color: C.textPrimary }}>
+          <Menu size={18} />
+          <span className="text-sm" style={{ fontFamily: "'Fraunces', serif", fontWeight: 600 }}>Desk Macro</span>
+        </button>
+        {saveState === "saving" && <Loader2 size={13} className="animate-spin" color={C.textFaint} />}
+        {saveState === "saved" && <span className="text-[10px]" style={{ color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>✓</span>}
+      </div>
+
+      {mobileNavOpen && (
+        <div
+          className="app-shell md:hidden fixed inset-0"
+          style={{ backgroundColor: "rgba(0,0,0,0.6)", zIndex: 29 }}
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
       <div className="app-shell flex min-h-screen">
-        <aside className="w-56 flex-shrink-0 flex flex-col py-6 px-3" style={{ backgroundColor: C.surface, borderRight: `1px solid ${C.border}`, boxShadow: "4px 0 16px rgba(0,0,0,0.25)", zIndex: 1 }}>
+        <aside
+          className={`w-64 md:w-56 flex-shrink-0 flex flex-col py-6 px-3 fixed md:static inset-y-0 left-0 overflow-y-auto transition-transform duration-200 ${mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
+          style={{ backgroundColor: C.surface, borderRight: `1px solid ${C.border}`, boxShadow: "4px 0 16px rgba(0,0,0,0.25)", zIndex: 30 }}
+        >
+          <button onClick={() => setMobileNavOpen(false)} className="md:hidden self-end mb-2" style={{ color: C.textFaint }}>
+            <X size={18} />
+          </button>
           <div className="px-2 mb-6 flex items-center gap-2.5">
             <div className="flex items-center justify-center flex-shrink-0" style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: C.surfaceRaised, border: `1px solid ${C.gold}` }}>
               <span style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, color: C.gold, fontSize: "0.95rem" }}>D</span>
@@ -2029,7 +2060,7 @@ function Dashboard({ userEmail, onLogout }) {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id)}
+                  onClick={() => { setActiveTab(item.id); setMobileNavOpen(false); }}
                   className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left relative"
                   style={{
                     fontFamily: "'IBM Plex Sans', sans-serif",
@@ -2071,7 +2102,7 @@ function Dashboard({ userEmail, onLogout }) {
           </div>
         </aside>
 
-        <main className="flex-1 px-8 py-6 overflow-y-auto">
+        <main className="flex-1 px-4 py-4 md:px-8 md:py-6 overflow-y-auto w-full min-w-0">
           <div className="max-w-4xl">
             <SectionHeading title={activeItem.label} subtitle={subtitles[activeTab]} icon={activeItem.icon} />
             {loading ? (
